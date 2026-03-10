@@ -231,7 +231,13 @@ export interface SpecialProgressionDef {
     checkRule: string;
     successTransition: string;
   };
+  postLimitTransition?: {
+    onExceed: string;
+    description: string;
+  };
+  possibleOutcomes?: Record<string, string>;
   narrativeTags: string[];
+  systemNotes?: string[];
 }
 
 // --- Runtime State ---

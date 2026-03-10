@@ -76,6 +76,17 @@ export const COUNTER_DB: Record<string, CounterDef> = {
     counterReason: ['水域與詭計打亂射手的距離與節奏控制。'],
     backgroundHooks: ['TAG-NATURE', 'NT-SURVIVALIST'],
   },
+  'CT-INSECT-DIVA': {
+    id: 'CT-INSECT-DIVA',
+    monsterFamily: ['蟲系'],
+    targetClass: ['歌姬'],
+    counterType: 'normal',
+    numericalEffects: { hitRate: 10, desDelta: 20, spDelta: -10, duration: '本戰鬥' },
+    narrativePreferenceTags: ['NRT-DISGUST', 'NRT-VIOLATION'],
+    counterReason: ['蟲類的蠕動與嗡鳴聲破壞了歌姬的音域精準度，且其分泌物會損壞演奏器材。'],
+    jailbreakReason: ['多足蟲在嬌嫩的肌膚上爬行，鑽入打歌服的縫隙，讓歌姬的歌聲顫抖著混合了崩潰的淫鳴。'],
+    backgroundHooks: ['TAG-IDOL', 'NT-PERFORMER'],
+  },
 };
 
 /** Find counter relations between a monster family and a player class name */
