@@ -24,6 +24,7 @@ export function createNewRun(): GameState {
     gold: 0,
     enemies: [],
     combat: null,
+    currentEvent: null,
     shopFloors,
     shopVisited: [false, false, false],
     dbCache: {},

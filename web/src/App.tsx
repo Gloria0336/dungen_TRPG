@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type {
   GameState, GameConfig, CombatAction, CombatTurnResult,
-  GameLogEntry, ModelInfo,
+  GameLogEntry, ModelInfo, EventOption,
 } from './types';
 import { getAllClasses } from './data/classes';
 import {
@@ -20,6 +20,7 @@ import { formatDiceResult } from './engine/diceEngine';
 import { requestNarrative, addNarrativeToHistory } from './ai/narrativeService';
 import { generateBiography, type BioInput } from './ai/biographyService';
 import { RECOMMENDED_MODELS, fetchAvailableModels } from './ai/openrouter';
+import { getRandomEvent } from './data/events';
 import './index.css';
 
 const CONFIG_KEY = 'dungen_trpg_config';
@@ -208,7 +209,8 @@ export default function App() {
       requestAINarrative(state, nextResults.length > 0 ? nextResults : undefined, `探索途中遭遇了 ${encounter.enemies.map(e => e.templateName).join('和')}！戰鬥即將開始。`);
     } else if (encounter.type === 'event') {
       state.phase = 'EVENT';
-      addLogEntry(state, 'system', `觸發事件: ${encounter.event?.templateName ?? '未知事件'}`);
+      state.currentEvent = encounter.event || null;
+      addLogEntry(state, 'system', `觸發事件: ${state.currentEvent?.templateName ?? '未知事件'}`);
       setState({ ...state });
       requestAINarrative(state, undefined, `探索途中觸發了事件。`);
     }
@@ -293,10 +295,72 @@ export default function App() {
       }
     } else if (result.phaseChange) {
       state.phase = result.phaseChange;
+      if (state.phase === 'EVENT') {
+        state.currentEvent = getRandomEvent();
+      }
     }
     saveGame(state);
     setState({ ...state });
     requestAINarrative(state, undefined, result.result);
+  };
+
+  const handleEventOption = (option: EventOption) => {
+    if (!state || !state.currentEvent) return;
+
+    const effects = option.successEffects; // Simplified: usually events have distinct success/fail but labels imply the check
+    let actualEffects = effects;
+    
+    if (option.requiredCheck !== '無') {
+      // Basic stat check logic
+      const isAgi = option.requiredCheck.includes('AGI') || option.requiredCheck.includes('DEX');
+      const isStr = option.requiredCheck.includes('STR');
+      const isInt = option.requiredCheck.includes('INT');
+      const isVit = option.requiredCheck.includes('VIT') || option.requiredCheck.includes('WIL');
+      
+      const statVal = isAgi ? state.players![0].agi : 
+                     isStr ? state.players![0].str : 
+                     isInt ? state.players![0].wil : // Map INT to WIL
+                     isVit ? state.players![0].wil : 10;
+      
+      const roll = Math.floor(Math.random() * 100) + 1;
+      // Formula: 1D100 <= 50 + stat*5
+      const threshold = 50 + statVal * 5;
+      const success = roll <= threshold;
+      
+      addLogEntry(state, 'dice', `【事件檢定】門檻: ${threshold}% | 擲骰: 1D100=${roll} → ${success ? '✓ 成功' : '✗ 失敗'}`);
+      actualEffects = success ? option.successEffects : option.failEffects;
+    }
+
+    addLogEntry(state, 'system', `事件結果：${actualEffects}`);
+
+    // Basic state change parsing
+    const hpMatch = actualEffects.match(/HP\s*([+-]\d+)/);
+    if (hpMatch && state.players) {
+      const val = parseInt(hpMatch[1]);
+      state.players.forEach(p => p.hp = Math.max(0, Math.min(p.maxHp, p.hp + val)));
+    }
+    const desMatch = actualEffects.match(/DES\s*([+-]\d+)/);
+    if (desMatch && state.players) {
+      const val = parseInt(desMatch[1]);
+      state.players.forEach(p => p.des = Math.max(0, Math.min(100, p.des + val)));
+    }
+
+    if (actualEffects.includes('Phase->COMBAT')) {
+      // Trigger combat
+      const encounter = generateExploreEncounter(state.floor, state);
+      state.enemies = encounter.enemies || [];
+      state.combat = initCombat(state.players!, state.enemies);
+      state.phase = 'COMBAT';
+      state.currentEvent = null;
+      setState({ ...state });
+      requestAINarrative(state, undefined, `事件導致了戰鬥！ ${actualEffects}`);
+      return;
+    }
+
+    state.phase = 'REST'; // Most events transition to REST
+    state.currentEvent = null;
+    setState({ ...state });
+    requestAINarrative(state, undefined, `事件結束：${actualEffects}`);
   };
 
   const handleSpecialAction = (actionType: string) => {
@@ -612,6 +676,18 @@ export default function App() {
                   
                   return null;
                 })()}
+              </div>
+            )}
+            {state.phase === 'EVENT' && state.currentEvent && (
+              <div className="action-buttons">
+                <div className="text-sm" style={{ width: '100%', marginBottom: '0.3rem', color: 'var(--gold-color)' }}>
+                  事件：{state.currentEvent.templateName}
+                </div>
+                {state.currentEvent.options.map(opt => (
+                  <button key={opt.id} className="action-btn" disabled={isStreaming} onClick={() => handleEventOption(opt)}>
+                    {opt.label}
+                  </button>
+                ))}
               </div>
             )}
             {state.phase === 'REST' && (

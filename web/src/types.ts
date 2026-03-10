@@ -402,6 +402,7 @@ export interface GameState {
   gold: number;
   enemies: EnemyState[];
   combat: CombatState | null;
+  currentEvent: EventDef | null;
   shopFloors: [number, number]; // 2 random merchant floors
   shopVisited: boolean[];
   dbCache: Record<string, string>;
