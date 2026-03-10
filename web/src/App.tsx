@@ -88,7 +88,33 @@ export default function App() {
     } catch (e: any) {
       addLogEntry(gs, 'system', `❌ AI 錯誤: ${e.message}`);
     }
-    setIsStreaming(false); setState({ ...gs });
+    setIsStreaming(false);
+    setState({ ...gs });
+
+    // --- Auto-advance monster turns (Plan B) ---
+    // If we're still in combat and it's the system's turn (waitingForPlayer is null), 
+    // automatically pop the next unit from the queue.
+    if (gs.phase === 'COMBAT' && gs.combat && !gs.combat.isComplete && gs.combat.waitingForPlayer === null) {
+      setTimeout(() => {
+        // We do a small timeout so the user can visually parse the log before the next one starts
+        const nextRes = advanceCombat(gs);
+        if (nextRes.length > 0) {
+          for (const res of nextRes) {
+            res.diceResults.forEach(d => addLogEntry(gs, 'dice', formatDiceResult(d)));
+            if (res.damageDealt > 0) addLogEntry(gs, 'combat', `${res.actorName} 對 ${res.targetName} 造成 ${res.damageDealt} 點傷害`);
+            if (res.controlApplied) addLogEntry(gs, 'combat', `${res.targetName} 被控制！`);
+            if (res.action === '被控制，無法行動') addLogEntry(gs, 'combat', `${res.actorName} 被控制中，跳過行動`);
+          }
+          createSnapshot(gs);
+          setState({ ...gs });
+          // Recursively call for the next narrative
+          requestAINarrative(gs, nextRes);
+        } else {
+          // Queue might be empty or combat ended during advance
+          setState({ ...gs });
+        }
+      }, 1500);
+    }
   }, [config]);
 
   // --- Start Screen ---
