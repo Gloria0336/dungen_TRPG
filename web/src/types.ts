@@ -287,6 +287,12 @@ export interface PlayerState {
   equippedWeapon: InventoryItem | null;
   equippedUpper: InventoryItem | null;
   equippedLower: InventoryItem | null;
+  // Biography fields
+  race?: string;
+  age?: string;
+  appearance?: string;
+  background?: string;
+  biography?: string;
 }
 
 export interface StatusEffect {

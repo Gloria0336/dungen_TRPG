@@ -20,6 +20,7 @@ import { generateGoldDrop, rollItemDrop, processGrowth } from './engine/lootEngi
 // shop engine used indirectly via phase transitions
 import { formatDiceResult } from './engine/diceEngine';
 import { requestNarrative, addNarrativeToHistory } from './ai/narrativeService';
+import { generateBiography, type BioInput } from './ai/biographyService';
 import { RECOMMENDED_MODELS, fetchAvailableModels } from './ai/openrouter';
 import './index.css';
 
@@ -46,6 +47,12 @@ export default function App() {
   const [playerNames, setPlayerNames] = useState<[string, string]>(['', '']);
   const [showPlayerPanel, setShowPlayerPanel] = useState(true);
   const [showLogPanel, setShowLogPanel] = useState(true);
+  const [initSubPhase, setInitSubPhase] = useState<'CLASS_SELECT' | 'BIO_INPUT' | 'BIO_GENERATE' | 'BIO_CONFIRM'>('CLASS_SELECT');
+  const [playerBios, setPlayerBios] = useState<[BioInput, BioInput]>([
+    {race: '', age: '', appearance: '', background: ''},
+    {race: '', age: '', appearance: '', background: ''}
+  ]);
+  const [biographyText, setBiographyText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [state?.log.length, narrativeText]);
@@ -89,6 +96,9 @@ export default function App() {
             <button className="btn btn-primary" onClick={() => {
               const gs = createNewRun();
               gs.nsgEnabled = config.nsgEnabled;
+              setInitSubPhase('CLASS_SELECT');
+              setPlayerBios([{race: '', age: '', appearance: '', background: ''}, {race: '', age: '', appearance: '', background: ''}]);
+              setBiographyText('');
               setState(gs); setScreen('game');
               addLogEntry(gs, 'system', `新冒險開始！Run ID: ${gs.runId}`);
               addLogEntry(gs, 'system', `商人出現點: 第${gs.shopFloors[0]}層、第${gs.shopFloors[1]}層`);
@@ -114,13 +124,55 @@ export default function App() {
     const p1 = initializePlayer(classSelection[0], playerNames[0] || '角色1', 0);
     const p2 = initializePlayer(classSelection[1], playerNames[1] || '角色2', 1);
     state.players = [p1, p2];
+    setInitSubPhase('BIO_INPUT');
+    addLogEntry(state, 'system', `職業與名稱選擇完成，請填寫角色身世。`);
+    setState({ ...state });
+  };
+
+  const handleBioGenerate = async () => {
+    if (!state?.players) return;
+    setInitSubPhase('BIO_GENERATE');
+    setIsStreaming(true);
+    setBiographyText('');
+    let full = '';
+    try {
+      for await (const chunk of generateBiography(config.apiKey, config.modelId, playerBios[0], playerBios[1], state.players[0], state.players[1], config.nsgEnabled)) {
+        full += chunk; setBiographyText(full);
+      }
+    } catch (e: any) {
+      addLogEntry(state, 'system', `❌ AI 簡歷生成錯誤: ${e.message}`);
+    }
+    setIsStreaming(false);
+    setInitSubPhase('BIO_CONFIRM');
+  };
+
+  const handleBioConfirm = () => {
+    if (!state?.players) return;
+    // save bio to players
+    state.players[0].race = playerBios[0].race;
+    state.players[0].age = playerBios[0].age;
+    state.players[0].appearance = playerBios[0].appearance;
+    state.players[0].background = playerBios[0].background;
+    state.players[0].biography = biographyText;
+
+    state.players[1].race = playerBios[1].race;
+    state.players[1].age = playerBios[1].age;
+    state.players[1].appearance = playerBios[1].appearance;
+    state.players[1].background = playerBios[1].background;
+    state.players[1].biography = biographyText;
+
     state.phase = 'CUSTOM';
-    addLogEntry(state, 'system', `角色建立完成: ${p1.name}(${p1.className}) & ${p2.name}(${p2.className})`);
-    addLogEntry(state, 'system', `角色1絕對被克制族群: ${p1.absoluteCounter}`);
-    addLogEntry(state, 'system', `角色2絕對被克制族群: ${p2.absoluteCounter}`);
+    addLogEntry(state, 'system', `角色建立與身世設定完成: ${state.players[0].name} & ${state.players[1].name}`);
+    addLogEntry(state, 'system', `角色1絕對被克制族群: ${state.players[0].absoluteCounter}`);
+    addLogEntry(state, 'system', `角色2絕對被克制族群: ${state.players[1].absoluteCounter}`);
+    
+    addNarrativeToHistory(state, biographyText);
+    addLogEntry(state, 'narrative', biographyText);
+    
     createSnapshot(state);
     setState({ ...state });
-    requestAINarrative(state, undefined, '冒險開始！兩名角色剛踏入地牢入口，空氣混雜著潮濕與古老石塵的味道。請描述開場場景。');
+    requestAINarrative(state, undefined, '冒險開始！兩名角色剛踏入地牢入口，空氣混雜著潮濕與古老石塵的味道。請結合這份角色簡歷描述開場場景。');
+    setInitSubPhase('CLASS_SELECT');
   };
 
   const handleCustomDone = () => {
@@ -258,6 +310,9 @@ export default function App() {
     if (window.confirm('確定要放棄當前進度並重新開始嗎？')) {
       deleteSave();
       setScreen('start');
+      setInitSubPhase('CLASS_SELECT');
+      setPlayerBios([{race: '', age: '', appearance: '', background: ''}, {race: '', age: '', appearance: '', background: ''}]);
+      setBiographyText('');
       setState(null);
     }
   };
@@ -336,7 +391,7 @@ export default function App() {
 
           <div className="narrative-area" ref={scrollRef}>
             {/* INIT: Class selection */}
-            {state.phase === 'INIT' && !state.players && (
+            {state.phase === 'INIT' && initSubPhase === 'CLASS_SELECT' && (
               <div className="narrative-entry system">
                 <p>你踏入地牢入口，空氣混雜著潮濕與古老石塵的味道。</p>
                 <p>請為兩名角色選擇職業：</p>
@@ -366,8 +421,65 @@ export default function App() {
                   </div>
                 ))}
                 <button className="btn btn-primary" style={{ marginTop: '1rem' }} onClick={handleClassConfirm} disabled={!classSelection[0] || !classSelection[1]}>
-                  確認並開始冒險
+                  下一步：設定角色身世
                 </button>
+              </div>
+            )}
+
+            {/* INIT: BIO_INPUT */}
+            {state.phase === 'INIT' && initSubPhase === 'BIO_INPUT' && state.players && (
+              <div className="narrative-entry system">
+                <p>請為兩名角色填寫身世背景（作為 AI 生成角色簡歷的依據）：</p>
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+                  {[0, 1].map(idx => (
+                    <div key={idx} className="bio-form" style={{ flex: '1 1 300px' }}>
+                      <h3 style={{ marginBottom: '0.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', color: 'var(--sp-color)' }}>{state.players![idx].name} ({state.players![idx].className})</h3>
+                      <div className="bio-input-group">
+                        <label>種族</label>
+                        <input className="btn btn-sm bio-input" placeholder="例如：人類、精靈、半獸人..." value={playerBios[idx].race} onChange={e => { const b = [...playerBios] as [BioInput, BioInput]; b[idx].race = e.target.value; setPlayerBios(b); }} />
+                      </div>
+                      <div className="bio-input-group">
+                        <label>年齡</label>
+                        <input className="btn btn-sm bio-input" placeholder="例如：19歲、未知..." value={playerBios[idx].age} onChange={e => { const b = [...playerBios] as [BioInput, BioInput]; b[idx].age = e.target.value; setPlayerBios(b); }} />
+                      </div>
+                      <div className="bio-input-group">
+                        <label>外貌身材</label>
+                        <input className="btn btn-sm bio-input" placeholder="例如：高大結實、銀髮紅眼..." value={playerBios[idx].appearance} onChange={e => { const b = [...playerBios] as [BioInput, BioInput]; b[idx].appearance = e.target.value; setPlayerBios(b); }} />
+                      </div>
+                      <div className="bio-input-group">
+                        <label>簡單經歷與身分</label>
+                        <textarea className="btn btn-sm bio-textarea" placeholder="例如：沒落貴族的騎士、被放逐的魔法學徒..." rows={2} value={playerBios[idx].background} onChange={e => { const b = [...playerBios] as [BioInput, BioInput]; b[idx].background = e.target.value; setPlayerBios(b); }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button className="btn btn-primary" style={{ marginTop: '1rem' }} onClick={handleBioGenerate}>
+                  ✨ 生成角色簡歷
+                </button>
+              </div>
+            )}
+
+            {/* INIT: BIO_GENERATE & BIO_CONFIRM */}
+            {state.phase === 'INIT' && (initSubPhase === 'BIO_GENERATE' || initSubPhase === 'BIO_CONFIRM') && state.players && (
+              <div className="narrative-entry system">
+                <p>🎭 角色簡歷</p>
+                <div className="biography-card">
+                  <ReactMarkdown>{biographyText}</ReactMarkdown>
+                  {isStreaming && <span className="typing-indicator" style={{ display: 'inline-block' }}><span /><span /><span /></span>}
+                </div>
+                {initSubPhase === 'BIO_CONFIRM' && (
+                  <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+                    <button className="btn" onClick={() => setInitSubPhase('BIO_INPUT')}>
+                      ◀ 重新填寫
+                    </button>
+                    <button className="btn" onClick={handleBioGenerate}>
+                      🔄 重新生成
+                    </button>
+                    <button className="btn btn-primary" onClick={handleBioConfirm}>
+                      ✅ 確認並開始冒險
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
