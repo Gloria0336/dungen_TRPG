@@ -45,6 +45,7 @@ export default function App() {
   const [classSelection, setClassSelection] = useState<[string, string]>(['', '']);
   const [playerNames, setPlayerNames] = useState<[string, string]>(['', '']);
   const [showPlayerPanel, setShowPlayerPanel] = useState(true);
+  const [showLogPanel, setShowLogPanel] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [state?.log.length, narrativeText]);
@@ -267,7 +268,7 @@ export default function App() {
 
   return (
     <>
-      <div className={`game-screen ${!showPlayerPanel ? 'panel-collapsed' : ''}`}>
+      <div className={`game-screen ${!showPlayerPanel ? 'no-left' : ''} ${!showLogPanel ? 'no-right' : ''}`}>
         {/* Left Panel - State */}
         {showPlayerPanel && (
           <div className="side-panel">
@@ -319,6 +320,9 @@ export default function App() {
             <div className="phase-indicator">
               <button className="btn btn-sm panel-toggle-btn" onClick={() => setShowPlayerPanel(!showPlayerPanel)}>
                 {showPlayerPanel ? '◀ 角色' : '角色 ▶'}
+              </button>
+              <button className="btn btn-sm panel-toggle-btn log-toggle-btn" onClick={() => setShowLogPanel(!showLogPanel)}>
+                {showLogPanel ? '日誌 ▶' : '◀ 日誌'}
               </button>
               <div className="phase-dot" />
               <span className="phase-name">{state.phase}</span>
@@ -444,6 +448,7 @@ export default function App() {
         </div>
 
         {/* Right Panel - Combat/Info */}
+        {showLogPanel && (
         <div className="side-panel">
           {aliveEnemies.length > 0 && (
             <div className="panel-card">
@@ -476,6 +481,7 @@ export default function App() {
             </div>
           </div>
         </div>
+        )}
       </div>
       {showSettings && <SettingsModal config={config} models={models} onSave={(c: GameConfig) => { updateConfig(c); if (state) { state.nsgEnabled = c.nsgEnabled; setState({...state}); } setShowSettings(false); }} onClose={() => setShowSettings(false)} />}
     </>

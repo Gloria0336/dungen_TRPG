@@ -100,12 +100,12 @@ html, body, #root {
   display: grid; grid-template-columns: 280px 1fr 280px;
   height: 100vh; gap: 0;
 }
-.game-screen.panel-collapsed {
-  grid-template-columns: 1fr 280px;
-}
+.game-screen.no-left { grid-template-columns: 1fr 280px; }
+.game-screen.no-right { grid-template-columns: 280px 1fr; }
+.game-screen.no-left.no-right { grid-template-columns: 1fr; }
 
 @media (max-width: 1024px) {
-  .game-screen, .game-screen.panel-collapsed { grid-template-columns: 1fr; }
+  .game-screen, .game-screen.no-left, .game-screen.no-right, .game-screen.no-left.no-right { grid-template-columns: 1fr; }
   .side-panel { display: none; }
 }
 
@@ -371,7 +371,7 @@ html, body, #root {
 
 /* ============ Mobile Adjustments (iPhone 17) ============ */
 @media screen and (max-width: 430px) {
-  .game-screen, .game-screen.panel-collapsed {
+  .game-screen, .game-screen.no-left, .game-screen.no-right, .game-screen.no-left.no-right {
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr auto;
   }
