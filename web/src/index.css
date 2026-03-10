@@ -97,16 +97,8 @@ html, body, #root {
 
 /* ============ Game Screen ============ */
 .game-screen {
-  display: grid; grid-template-columns: 280px 1fr 280px;
-  height: 100vh; gap: 0;
-}
-.game-screen.no-left { grid-template-columns: 1fr 280px; }
-.game-screen.no-right { grid-template-columns: 280px 1fr; }
-.game-screen.no-left.no-right { grid-template-columns: 1fr; }
-
-@media (max-width: 1024px) {
-  .game-screen, .game-screen.no-left, .game-screen.no-right, .game-screen.no-left.no-right { grid-template-columns: 1fr; }
-  .side-panel { display: none; }
+  display: block;
+  height: 100vh; position: relative;
 }
 
 .panel-toggle-btn {
@@ -115,25 +107,20 @@ html, body, #root {
   border-color: var(--border);
 }
 
-@media screen and (max-width: 430px) {
-  .side-panel {
-    display: flex; /* Override previous none if necessary */
-    position: absolute;
-    left: 0; top: 0; bottom: 0;
-    z-index: 50;
-    width: 280px;
-    background: var(--bg-secondary);
-    box-shadow: 5px 0 15px rgba(0,0,0,0.5);
-  }
-}
-
-
 /* ============ Panels ============ */
-.side-panel {
-  background: var(--bg-secondary); border-right: 1px solid var(--border);
-  padding: 1rem; overflow-y: auto; display: flex; flex-direction: column; gap: 0.8rem;
+.side-panel-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  display: flex; z-index: 90; backdrop-filter: blur(2px);
 }
-.side-panel:last-child { border-right: none; border-left: 1px solid var(--border); }
+.side-panel {
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  padding: 1rem; overflow-y: auto; display: flex; flex-direction: column; gap: 0.8rem;
+  width: 280px; height: 100vh; position: relative;
+  box-shadow: 5px 0 15px rgba(0,0,0,0.5);
+}
+.side-panel.left-panel { border-right: 1px solid var(--border); }
+.side-panel.right-panel { border-left: 1px solid var(--border); margin-left: auto; }
+
 
 .panel-card {
   background: var(--bg-glass); border: 1px solid var(--border);
@@ -371,9 +358,8 @@ html, body, #root {
 
 /* ============ Mobile Adjustments (iPhone 17) ============ */
 @media screen and (max-width: 430px) {
-  .game-screen, .game-screen.no-left, .game-screen.no-right, .game-screen.no-left.no-right {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr auto;
+  .game-screen {
+    display: flex; flex-direction: column;
   }
   .center-area {
     height: 100dvh;

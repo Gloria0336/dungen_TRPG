@@ -45,8 +45,8 @@ export default function App() {
   const [models, setModels] = useState<ModelInfo[]>(RECOMMENDED_MODELS);
   const [classSelection, setClassSelection] = useState<[string, string]>(['', '']);
   const [playerNames, setPlayerNames] = useState<[string, string]>(['', '']);
-  const [showPlayerPanel, setShowPlayerPanel] = useState(true);
-  const [showLogPanel, setShowLogPanel] = useState(true);
+  const [showPlayerPanel, setShowPlayerPanel] = useState(false);
+  const [showLogPanel, setShowLogPanel] = useState(false);
   const [initSubPhase, setInitSubPhase] = useState<'CLASS_SELECT' | 'BIO_INPUT' | 'BIO_GENERATE' | 'BIO_CONFIRM'>('CLASS_SELECT');
   const [playerBios, setPlayerBios] = useState<[BioInput, BioInput]>([
     {race: '', age: '', appearance: '', background: ''},
@@ -323,10 +323,15 @@ export default function App() {
 
   return (
     <>
-      <div className={`game-screen ${!showPlayerPanel ? 'no-left' : ''} ${!showLogPanel ? 'no-right' : ''}`}>
+      <div className="game-screen">
         {/* Left Panel - State */}
         {showPlayerPanel && (
-          <div className="side-panel">
+          <div className="side-panel-overlay" onClick={() => setShowPlayerPanel(false)}>
+            <div className="side-panel left-panel" onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
+                <span className="panel-title" style={{ margin: 0 }}>角色狀態</span>
+                <button className="btn btn-sm" onClick={() => setShowPlayerPanel(false)}>✕</button>
+              </div>
           <div className="panel-card">
             <div className="panel-title">冒險資訊</div>
             <div className="text-sm">Run: <span style={{ fontFamily: 'var(--font-mono)' }}>{state.runId}</span></div>
@@ -366,7 +371,8 @@ export default function App() {
               ))}
             </div>
           )}
-        </div>
+            </div>
+          </div>
         )}
 
         {/* Center - Narrative & Actions */}
@@ -561,7 +567,12 @@ export default function App() {
 
         {/* Right Panel - Combat/Info */}
         {showLogPanel && (
-        <div className="side-panel">
+          <div className="side-panel-overlay" onClick={() => setShowLogPanel(false)}>
+            <div className="side-panel right-panel" onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
+                <span className="panel-title" style={{ margin: 0 }}>日誌與資訊</span>
+                <button className="btn btn-sm" onClick={() => setShowLogPanel(false)}>✕</button>
+              </div>
           {aliveEnemies.length > 0 && (
             <div className="panel-card">
               <div className="panel-title">敵人</div>
@@ -592,7 +603,8 @@ export default function App() {
               ))}
             </div>
           </div>
-        </div>
+            </div>
+          </div>
         )}
       </div>
       {showSettings && <SettingsModal config={config} models={models} onSave={(c: GameConfig) => { updateConfig(c); if (state) { state.nsgEnabled = c.nsgEnabled; setState({...state}); } setShowSettings(false); }} onClose={() => setShowSettings(false)} />}
