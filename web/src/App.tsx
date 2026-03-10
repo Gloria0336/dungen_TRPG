@@ -52,6 +52,7 @@ export default function App() {
   const [playerNames, setPlayerNames] = useState<[string, string]>(['', '']);
   const [showPlayerPanel, setShowPlayerPanel] = useState(false);
   const [showLogPanel, setShowLogPanel] = useState(false);
+  const [showFullLog, setShowFullLog] = useState(false);
   const [initSubPhase, setInitSubPhase] = useState<'CLASS_SELECT' | 'BIO_INPUT' | 'BIO_GENERATE' | 'BIO_CONFIRM'>('CLASS_SELECT');
   const [playerBios, setPlayerBios] = useState<[BioInput, BioInput]>([
     { race: '', age: '', appearance: '', background: '' },
@@ -483,6 +484,9 @@ export default function App() {
               <button className="btn btn-sm panel-toggle-btn log-toggle-btn" onClick={() => setShowLogPanel(!showLogPanel)}>
                 {showLogPanel ? '日誌 ▶' : '◀ 日誌'}
               </button>
+              <button className="btn btn-sm" onClick={() => setShowFullLog(true)}>
+                📖 完整日誌
+              </button>
               <div className="phase-dot" />
               <span className="phase-name">{state.phase}</span>
             </div>
@@ -784,6 +788,7 @@ export default function App() {
         )}
       </div>
       {showSettings && <SettingsModal config={config} models={models} onSave={(c: GameConfig) => { updateConfig(c); if (state) { state.nsgEnabled = c.nsgEnabled; setState({ ...state }); } setShowSettings(false); }} onClose={() => setShowSettings(false)} />}
+      {showFullLog && state && <LogViewerModal log={state.log} onClose={() => setShowFullLog(false)} />}
     </>
   );
 }
@@ -870,6 +875,77 @@ function SettingsModal({ config, models, onSave, onClose }: {
         <div className="modal-actions">
           <button className="btn" onClick={onClose}>取消</button>
           <button className="btn btn-primary" onClick={() => onSave({ apiKey, modelId, modelName: models.find(m => m.id === modelId)?.name ?? modelId, nsgEnabled: nsg })}>儲存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LogViewerModal({ log, onClose }: { log: GameLogEntry[]; onClose: () => void }) {
+  const [filter, setFilter] = useState<'all' | 'narrative' | 'combat' | 'system'>('all');
+
+  const filteredLog = log.filter(l => {
+    if (filter === 'all') return true;
+    if (filter === 'narrative') return l.type === 'narrative';
+    if (filter === 'combat') return l.type === 'combat' || l.type === 'dice';
+    if (filter === 'system') return l.type === 'system' || l.type === 'state_change';
+    return true;
+  });
+
+  const handleExport = () => {
+    let content = `地牢探索完整日誌\n匯出時間：${new Date().toLocaleString()}\n\n`;
+    content += `--- 日誌開始 ---\n\n`;
+    log.forEach(l => {
+      const time = new Date(l.timestamp).toLocaleTimeString();
+      let prefix = `[${time}] [層數:${l.floor}] [${l.phase}] `;
+      if (l.type === 'system') prefix += '🔧 系統: ';
+      else if (l.type === 'combat') prefix += '⚔️ 戰鬥: ';
+      else if (l.type === 'dice') prefix += '🎲 擲骰: ';
+      else if (l.type === 'narrative') prefix += '📖 敘事: ';
+      else if (l.type === 'event') prefix += '📜 事件: ';
+
+      content += `${prefix}${l.text}\n`;
+      if (l.type === 'narrative') content += '\n';
+    });
+    content += `\n--- 日誌結束 ---`;
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `地牢日誌_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: '800px', width: '90vw', height: '80vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h2 style={{ margin: 0 }}>📖 完整冒險日誌 ({log.length} 筆)</h2>
+          <button className="btn btn-sm" onClick={onClose}>✕</button>
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+          <button className={`btn btn-sm ${filter === 'all' ? 'btn-primary' : ''}`} onClick={() => setFilter('all')}>全部</button>
+          <button className={`btn btn-sm ${filter === 'narrative' ? 'btn-primary' : ''}`} onClick={() => setFilter('narrative')}>📖 劇情與敘事</button>
+          <button className={`btn btn-sm ${filter === 'combat' ? 'btn-primary' : ''}`} onClick={() => setFilter('combat')}>⚔️ 戰鬥與擲骰</button>
+          <button className={`btn btn-sm ${filter === 'system' ? 'btn-primary' : ''}`} onClick={() => setFilter('system')}>🔧 系統紀錄</button>
+
+          <div style={{ flex: 1 }} />
+          <button className="btn btn-sm btn-primary" onClick={handleExport}>📥 匯出為 TXT</button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-card)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
+          {filteredLog.map((entry, i) => (
+            <div key={i} className={`narrative-entry ${entry.type}`} style={{ marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginBottom: '0.2rem' }}>
+                [{new Date(entry.timestamp).toLocaleTimeString()}] F{entry.floor} - {entry.phase}
+              </div>
+              {entry.type === 'narrative' ? <ReactMarkdown>{entry.text}</ReactMarkdown> : entry.text}
+            </div>
+          ))}
+          {filteredLog.length === 0 && <div style={{ color: 'var(--text-dim)', textAlign: 'center', padding: '2rem' }}>無符合條件的日誌</div>}
         </div>
       </div>
     </div>

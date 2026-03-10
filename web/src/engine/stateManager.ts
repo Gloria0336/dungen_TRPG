@@ -117,9 +117,9 @@ export function addLogEntry(
     type,
     text,
   });
-  // Keep log manageable
-  if (state.log.length > 500) {
-    state.log = state.log.slice(-300);
+  // Keep log manageable (raised limit for FULL log viewing)
+  if (state.log.length > 50000) {
+    state.log = state.log.slice(-48000);
   }
 }
 
