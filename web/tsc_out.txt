@@ -1,0 +1,9 @@
+﻿src/ai/narrativeService.ts(1,44): error TS6196: 'NarrativeEntry' is declared but never used.
+src/App.tsx(5,28): error TS6196: 'Phase' is declared but never used.
+src/App.tsx(20,1): error TS6133: 'generateShopInventory' is declared but its value is never read.
+src/App.tsx(257,9): error TS6133: 'phaseActions' is declared but its value is never read.
+src/engine/combatEngine.ts(5,10): error TS6133: 'roll1D100' is declared but its value is never read.
+src/engine/combatEngine.ts(195,3): error TS6133: 'nsgEnabled' is declared but its value is never read.
+src/engine/phaseEngine.ts(2,10): error TS6133: 'MONSTER_DB' is declared but its value is never read.
+src/engine/shopEngine.ts(2,1): error TS6133: 'randomInt' is declared but its value is never read.
+src/engine/stateManager.ts(1,39): error TS6196: 'Phase' is declared but never used.
