@@ -356,7 +356,6 @@ export interface TurnAction {
 
 export interface CombatState {
   turnOrder: TurnAction[];
-  currentTurnIndex: number;
   roundNumber: number;
   expectedRounds: number; // soft turn limit
   softPenalty: number; // evade penalty

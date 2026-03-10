@@ -11,7 +11,7 @@ import {
 } from './engine/stateManager';
 import {
   initCombat, processPlayerAction,
-  isCombatVictory, processNextTurn
+  isCombatVictory, advanceCombat
 } from './engine/combatEngine';
 import { generateExploreEncounter, processRestAction } from './engine/phaseEngine';
 import { generateGoldDrop, rollItemDrop, processGrowth } from './engine/lootEngine';
@@ -54,8 +54,8 @@ export default function App() {
   const [showLogPanel, setShowLogPanel] = useState(false);
   const [initSubPhase, setInitSubPhase] = useState<'CLASS_SELECT' | 'BIO_INPUT' | 'BIO_GENERATE' | 'BIO_CONFIRM'>('CLASS_SELECT');
   const [playerBios, setPlayerBios] = useState<[BioInput, BioInput]>([
-    {race: '', age: '', appearance: '', background: ''},
-    {race: '', age: '', appearance: '', background: ''}
+    { race: '', age: '', appearance: '', background: '' },
+    { race: '', age: '', appearance: '', background: '' }
   ]);
   const [biographyText, setBiographyText] = useState('');
   const [actionState, setActionState] = useState<ActionSelectionState>({ type: 'main' });
@@ -103,7 +103,7 @@ export default function App() {
               const gs = createNewRun();
               gs.nsgEnabled = config.nsgEnabled;
               setInitSubPhase('CLASS_SELECT');
-              setPlayerBios([{race: '', age: '', appearance: '', background: ''}, {race: '', age: '', appearance: '', background: ''}]);
+              setPlayerBios([{ race: '', age: '', appearance: '', background: '' }, { race: '', age: '', appearance: '', background: '' }]);
               setBiographyText('');
               setState(gs); setScreen('game');
               addLogEntry(gs, 'system', `新冒險開始！Run ID: ${gs.runId}`);
@@ -171,10 +171,10 @@ export default function App() {
     addLogEntry(state, 'system', `角色建立與身世設定完成: ${state.players[0].name} & ${state.players[1].name}`);
     addLogEntry(state, 'system', `角色1絕對被克制族群: ${state.players[0].absoluteCounter}`);
     addLogEntry(state, 'system', `角色2絕對被克制族群: ${state.players[1].absoluteCounter}`);
-    
+
     addNarrativeToHistory(state, biographyText);
     addLogEntry(state, 'narrative', biographyText);
-    
+
     createSnapshot(state);
     setState({ ...state });
     requestAINarrative(state, undefined, '冒險開始！兩名角色剛踏入地牢入口，空氣混雜著潮濕與古老石塵的味道。請結合這份角色簡歷描述開場場景。');
@@ -195,8 +195,8 @@ export default function App() {
       state.phase = 'COMBAT';
       setActionState({ type: 'main' });
       addLogEntry(state, 'system', `遭遇敵人！${encounter.enemies.map(e => `${e.templateName}(${e.tier})`).join('、')}`);
-      
-      const nextResults = processNextTurn(state);
+
+      const nextResults = advanceCombat(state);
       for (const res of nextResults) {
         res.diceResults.forEach(d => addLogEntry(state, 'dice', formatDiceResult(d)));
         if (res.damageDealt > 0) addLogEntry(state, 'combat', `${res.actorName} 對 ${res.targetName} 造成 ${res.damageDealt} 點傷害`);
@@ -231,13 +231,13 @@ export default function App() {
 
     state.combat.pendingResults.push(result);
 
-    // Continue the turn loop
-    const nextResults = processNextTurn(state);
+    // Continue the turn loop by processing the rest of the queue
+    const nextResults = advanceCombat(state);
     let specialTriggered = false;
     for (const res of nextResults) {
       res.diceResults.forEach(d => {
-         addLogEntry(state, 'dice', formatDiceResult(d));
-         if (d.purpose.includes('隱藏觸發') && d.success) specialTriggered = true;
+        addLogEntry(state, 'dice', formatDiceResult(d));
+        if (d.purpose.includes('隱藏觸發') && d.success) specialTriggered = true;
       });
       if (res.damageDealt > 0) addLogEntry(state, 'combat', `${res.actorName} 對 ${res.targetName} 造成 ${res.damageDealt} 點傷害`);
       if (res.controlApplied) addLogEntry(state, 'combat', `${res.targetName} 被控制！`);
@@ -309,24 +309,24 @@ export default function App() {
 
     const effects = option.successEffects; // Simplified: usually events have distinct success/fail but labels imply the check
     let actualEffects = effects;
-    
+
     if (option.requiredCheck !== '無') {
       // Basic stat check logic
       const isAgi = option.requiredCheck.includes('AGI') || option.requiredCheck.includes('DEX');
       const isStr = option.requiredCheck.includes('STR');
       const isInt = option.requiredCheck.includes('INT');
       const isVit = option.requiredCheck.includes('VIT') || option.requiredCheck.includes('WIL');
-      
-      const statVal = isAgi ? state.players![0].agi : 
-                     isStr ? state.players![0].str : 
-                     isInt ? state.players![0].wil : // Map INT to WIL
-                     isVit ? state.players![0].wil : 10;
-      
+
+      const statVal = isAgi ? state.players![0].agi :
+        isStr ? state.players![0].str :
+          isInt ? state.players![0].wil : // Map INT to WIL
+            isVit ? state.players![0].wil : 10;
+
       const roll = Math.floor(Math.random() * 100) + 1;
       // Formula: 1D100 <= 50 + stat*5
       const threshold = 50 + statVal * 5;
       const success = roll <= threshold;
-      
+
       addLogEntry(state, 'dice', `【事件檢定】門檻: ${threshold}% | 擲骰: 1D100=${roll} → ${success ? '✓ 成功' : '✗ 失敗'}`);
       actualEffects = success ? option.successEffects : option.failEffects;
     }
@@ -383,7 +383,7 @@ export default function App() {
       deleteSave();
       setScreen('start');
       setInitSubPhase('CLASS_SELECT');
-      setPlayerBios([{race: '', age: '', appearance: '', background: ''}, {race: '', age: '', appearance: '', background: ''}]);
+      setPlayerBios([{ race: '', age: '', appearance: '', background: '' }, { race: '', age: '', appearance: '', background: '' }]);
       setBiographyText('');
       setState(null);
     }
@@ -404,45 +404,45 @@ export default function App() {
                 <span className="panel-title" style={{ margin: 0 }}>角色狀態</span>
                 <button className="btn btn-sm" onClick={() => setShowPlayerPanel(false)}>✕</button>
               </div>
-          <div className="panel-card">
-            <div className="panel-title">冒險資訊</div>
-            <div className="text-sm">Run: <span style={{ fontFamily: 'var(--font-mono)' }}>{state.runId}</span></div>
-            <div className="flex-between mt-1">
-              <span className="text-sm gold">💰 {state.gold}</span>
-              <button className="btn btn-sm" onClick={() => { saveGame(state); log('system', '遊戲已儲存'); }}>💾 儲存</button>
-            </div>
-          </div>
-
-          {state.players?.map((p, i) => (
-            <div className="panel-card" key={i}>
-              <div className="player-name">
-                <span>{p.name}</span>
-                <span className="player-class">{p.className}</span>
+              <div className="panel-card">
+                <div className="panel-title">冒險資訊</div>
+                <div className="text-sm">Run: <span style={{ fontFamily: 'var(--font-mono)' }}>{state.runId}</span></div>
+                <div className="flex-between mt-1">
+                  <span className="text-sm gold">💰 {state.gold}</span>
+                  <button className="btn btn-sm" onClick={() => { saveGame(state); log('system', '遊戲已儲存'); }}>💾 儲存</button>
+                </div>
               </div>
-              {p.isControlled && <span className="badge danger">被控制</span>}
-              {p.isBD && <span className="badge danger">BD</span>}
 
-              <StatBar label="HP" value={p.hp} max={p.maxHp} type="hp" />
-              <StatBar label="SP" value={p.sp} max={p.maxSp} type="sp" />
-              <StatBar label="DES" value={p.des} max={100} type="des" />
+              {state.players?.map((p, i) => (
+                <div className="panel-card" key={i}>
+                  <div className="player-name">
+                    <span>{p.name}</span>
+                    <span className="player-class">{p.className}</span>
+                  </div>
+                  {p.isControlled && <span className="badge danger">被控制</span>}
+                  {p.isBD && <span className="badge danger">BD</span>}
 
-              <div className="mt-1 text-sm text-dim">
-                STR:{p.str} AGI:{p.agi} WIL:{p.wil} DR:{p.drPercent}%
-              </div>
-              <div className="text-sm text-dim">
-                上衣:{p.upperDurability}/100 下衣:{p.lowerDurability}/100
-              </div>
-            </div>
-          ))}
+                  <StatBar label="HP" value={p.hp} max={p.maxHp} type="hp" />
+                  <StatBar label="SP" value={p.sp} max={p.maxSp} type="sp" />
+                  <StatBar label="DES" value={p.des} max={100} type="des" />
 
-          {state.inventory.length > 0 && (
-            <div className="panel-card">
-              <div className="panel-title">背包</div>
-              {state.inventory.map(item => (
-                <div key={item.id} className="text-sm">{item.name} x{item.quantity}</div>
+                  <div className="mt-1 text-sm text-dim">
+                    STR:{p.str} AGI:{p.agi} WIL:{p.wil} DR:{p.drPercent}%
+                  </div>
+                  <div className="text-sm text-dim">
+                    上衣:{p.upperDurability}/100 下衣:{p.lowerDurability}/100
+                  </div>
+                </div>
               ))}
-            </div>
-          )}
+
+              {state.inventory.length > 0 && (
+                <div className="panel-card">
+                  <div className="panel-title">背包</div>
+                  {state.inventory.map(item => (
+                    <div key={item.id} className="text-sm">{item.name} x{item.quantity}</div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -596,7 +596,7 @@ export default function App() {
                 {(() => {
                   const pIdx = state.combat.waitingForPlayer;
                   const currentPlayer = state.players[pIdx];
-                  
+
                   if (actionState.type === 'main') {
                     return (
                       <>
@@ -626,7 +626,7 @@ export default function App() {
                       </>
                     );
                   }
-                  
+
                   if (actionState.type === 'attack_target') {
                     return (
                       <>
@@ -648,7 +648,7 @@ export default function App() {
                   if (actionState.type === 'skill_target') {
                     const skill = currentPlayer.skills.find(s => s.id === actionState.selectedSkillId);
                     const isHealing = skill?.effectSummary.includes('回復') || skill?.effectSummary.includes('治癒') || skill?.effectSummary.includes('護盾');
-                    
+
                     return (
                       <>
                         <div className="text-sm" style={{ width: '100%', marginBottom: '0.3rem', color: 'var(--sp-color)' }}>
@@ -673,7 +673,7 @@ export default function App() {
                       </>
                     );
                   }
-                  
+
                   return null;
                 })()}
               </div>
@@ -692,7 +692,7 @@ export default function App() {
             )}
             {state.phase === 'REST' && (
               <div className="action-buttons">
-                {[1,2,3,4,5,6].map(i => (
+                {[1, 2, 3, 4, 5, 6].map(i => (
                   <button key={i} className="action-btn" disabled={isStreaming} onClick={() => handleRestAction(i)}>
                     {['', '原地休息', '探索該層', '下一層', '檢查狀態', '修補裝備', '使用藥水'][i]}
                   </button>
@@ -723,41 +723,41 @@ export default function App() {
                 <span className="panel-title" style={{ margin: 0 }}>日誌與資訊</span>
                 <button className="btn btn-sm" onClick={() => setShowLogPanel(false)}>✕</button>
               </div>
-          {aliveEnemies.length > 0 && (
-            <div className="panel-card">
-              <div className="panel-title">敵人</div>
-              {aliveEnemies.map(e => (
-                <div key={e.instanceId} className="enemy-item">
-                  <span className="enemy-name">{e.templateName}</span>
-                  <div className="enemy-hp-bar">
-                    <div className="enemy-hp-fill" style={{ width: `${(e.hp / e.maxHp) * 100}%` }} />
-                  </div>
-                  <span className="stat-value">{e.hp}/{e.maxHp}</span>
+              {aliveEnemies.length > 0 && (
+                <div className="panel-card">
+                  <div className="panel-title">敵人</div>
+                  {aliveEnemies.map(e => (
+                    <div key={e.instanceId} className="enemy-item">
+                      <span className="enemy-name">{e.templateName}</span>
+                      <div className="enemy-hp-bar">
+                        <div className="enemy-hp-fill" style={{ width: `${(e.hp / e.maxHp) * 100}%` }} />
+                      </div>
+                      <span className="stat-value">{e.hp}/{e.maxHp}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
-          {state.combat && (
-            <div className="panel-card">
-              <div className="panel-title">戰鬥資訊</div>
-              <div className="text-sm">回合: {state.combat.roundNumber}</div>
-              <div className="text-sm">預期: {state.combat.expectedRounds} 回合</div>
-              {state.combat.softPenalty > 0 && <div className="text-sm" style={{ color: 'var(--des-color)' }}>閃避懲罰: -{state.combat.softPenalty}</div>}
-            </div>
-          )}
-          <div className="panel-card">
-            <div className="panel-title">戰鬥日誌</div>
-            <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-              {state.log.filter(l => l.type === 'dice' || l.type === 'combat').slice(-20).map((l, i) => (
-                <div key={i} className="text-sm" style={{ marginBottom: '0.3rem', color: l.type === 'dice' ? 'var(--gold-color)' : 'var(--text-secondary)' }}>{l.text}</div>
-              ))}
-            </div>
-          </div>
+              )}
+              {state.combat && (
+                <div className="panel-card">
+                  <div className="panel-title">戰鬥資訊</div>
+                  <div className="text-sm">回合: {state.combat.roundNumber}</div>
+                  <div className="text-sm">預期: {state.combat.expectedRounds} 回合</div>
+                  {state.combat.softPenalty > 0 && <div className="text-sm" style={{ color: 'var(--des-color)' }}>閃避懲罰: -{state.combat.softPenalty}</div>}
+                </div>
+              )}
+              <div className="panel-card">
+                <div className="panel-title">戰鬥日誌</div>
+                <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                  {state.log.filter(l => l.type === 'dice' || l.type === 'combat').slice(-20).map((l, i) => (
+                    <div key={i} className="text-sm" style={{ marginBottom: '0.3rem', color: l.type === 'dice' ? 'var(--gold-color)' : 'var(--text-secondary)' }}>{l.text}</div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         )}
       </div>
-      {showSettings && <SettingsModal config={config} models={models} onSave={(c: GameConfig) => { updateConfig(c); if (state) { state.nsgEnabled = c.nsgEnabled; setState({...state}); } setShowSettings(false); }} onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsModal config={config} models={models} onSave={(c: GameConfig) => { updateConfig(c); if (state) { state.nsgEnabled = c.nsgEnabled; setState({ ...state }); } setShowSettings(false); }} onClose={() => setShowSettings(false)} />}
     </>
   );
 }
@@ -824,12 +824,12 @@ function SettingsModal({ config, models, onSave, onClose }: {
           <label>AI 模型</label>
           <select value={modelId} onChange={e => setModelId(e.target.value)}>
             <optgroup label="推薦模型">
-              {RECOMMENDED_MODELS.map(m => <option key={m.id} value={m.id}>{m.name} ({Math.round(m.contextLength/1000)}K)</option>)}
+              {RECOMMENDED_MODELS.map(m => <option key={m.id} value={m.id}>{m.name} ({Math.round(m.contextLength / 1000)}K)</option>)}
             </optgroup>
             {models.length > RECOMMENDED_MODELS.length && (
               <optgroup label="所有模型">
                 {models.filter(m => !RECOMMENDED_MODELS.some(r => r.id === m.id)).map(m => (
-                  <option key={m.id} value={m.id}>{m.name} ({Math.round(m.contextLength/1000)}K)</option>
+                  <option key={m.id} value={m.id}>{m.name} ({Math.round(m.contextLength / 1000)}K)</option>
                 ))}
               </optgroup>
             )}

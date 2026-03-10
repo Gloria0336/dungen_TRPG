@@ -510,7 +510,6 @@ export function initCombat(
 
   return {
     turnOrder,
-    currentTurnIndex: 0,
     roundNumber: 1,
     expectedRounds,
     softPenalty: 0,
@@ -520,35 +519,43 @@ export function initCombat(
   };
 }
 
-/** Process the next turn iteratively until a player needs input or combat ends */
-export function processNextTurn(state: GameState): CombatTurnResult[] {
+/** Advance the combat queue iteratively until a player needs input, a monster acts, or combat ends */
+export function advanceCombat(state: GameState): CombatTurnResult[] {
   const combat = state.combat;
   if (!combat || combat.isComplete || !state.players) return [];
 
   const results: CombatTurnResult[] = [];
 
   while (true) {
-    if (combat.isComplete) break;
+    // Check victory / defeat immediately
+    const allEnemiesDead = state.enemies.every((e) => !e.isAlive);
+    const allPlayersDead = state.players.every((p) => !p.isAlive || p.isBD);
+    if (allEnemiesDead || allPlayersDead) {
+      combat.isComplete = true;
+      break;
+    }
 
     // End of Round check
-    if (combat.currentTurnIndex >= combat.turnOrder.length) {
+    if (combat.turnOrder.length === 0) {
       processEndOfRound(state.players, state.enemies, combat);
       if (combat.isComplete) break;
 
       combat.roundNumber++;
       combat.turnOrder = determineTurnOrder(state.players, state.enemies);
-      combat.currentTurnIndex = 0;
       continue;
     }
 
-    const currentTurn = combat.turnOrder[combat.currentTurnIndex];
+    // Process next action in queue
+    const currentTurn = combat.turnOrder[0];
+
+    // Pop from queue
+    combat.turnOrder.shift();
 
     if (currentTurn.isPlayer) {
       const p = state.players[currentTurn.playerIndex!];
-      if (!p.isAlive || p.isBD) {
-        combat.currentTurnIndex++;
-        continue;
-      }
+
+      // Skip if Dead or BD
+      if (!p.isAlive || p.isBD) continue;
 
       if (p.isControlled) {
         // Auto-skip controlled player
@@ -562,19 +569,17 @@ export function processNextTurn(state: GameState): CombatTurnResult[] {
           upperChange: 0, lowerChange: 0, controlApplied: false, controlDuration: 0,
           narrative: ''
         });
-        combat.currentTurnIndex++;
-      } else {
-        // Needs player input
-        combat.waitingForPlayer = currentTurn.playerIndex!;
-        break;
+        continue;
       }
+
+      // Needs player input
+      combat.waitingForPlayer = currentTurn.playerIndex!;
+      break; // Pause engine for player input
+
     } else {
       // Enemy turn
       const enemy = state.enemies.find((e) => e.instanceId === currentTurn.entityId);
-      if (!enemy || !enemy.isAlive) {
-        combat.currentTurnIndex++;
-        continue;
-      }
+      if (!enemy || !enemy.isAlive) continue;
 
       combat.waitingForPlayer = null; // No player input needed
 
@@ -593,31 +598,25 @@ export function processNextTurn(state: GameState): CombatTurnResult[] {
         const { skill, targetPlayerIndex } = chooseEnemyAction(enemy, state.players);
         const targetPlayer = state.players[targetPlayerIndex];
         const counter = getCounterEffects(enemy, targetPlayer, state.floor);
-        
+
         const res = processEnemyAttack(enemy, targetPlayer, skill, counter?.hitMod ?? 0, combat.softPenalty, state.nsgEnabled);
-        
+
         if (counter) {
-           res.diceResults.push({
-             purpose: '種族克制',
-             threshold: 100, roll: 1, success: true,
-             effects: `克制判定: ${counter.reason} (${counter.level})`
-           });
+          res.diceResults.push({
+            purpose: '種族克制',
+            threshold: 100, roll: 1, success: true,
+            effects: `克制判定: ${counter.reason} (${counter.level})`
+          });
         }
-        
+
         const hiddenRes = checkHiddenTrigger(enemy, targetPlayer);
         if (hiddenRes) res.diceResults.push(hiddenRes);
-        
+
         results.push(res);
       }
 
-      combat.currentTurnIndex++;
-    }
-
-    // Check victory / defeat immediately
-    const allEnemiesDead = state.enemies.every((e) => !e.isAlive);
-    const allPlayersDead = state.players.every((p) => !p.isAlive || p.isBD);
-    if (allEnemiesDead || allPlayersDead) {
-      combat.isComplete = true;
+      // We explicitly break here so the UI can process this ONE enemy action
+      // and update the narrative/screen symmetrically before pulling the next token
       break;
     }
   }

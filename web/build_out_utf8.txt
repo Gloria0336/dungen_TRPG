@@ -1,0 +1,9 @@
+﻿
+> web@0.0.0 build
+> tsc -b && vite build
+
+tsconfig.app.json(23,5): error TS5023: Unknown compiler option 'erasableSyntaxOnly'.
+error TS2688: Cannot find type definition file for 'node'.
+  The file is in the program because:
+    Entry point of type library 'node' specified in compilerOptions
+tsconfig.node.json(21,5): error TS5023: Unknown compiler option 'erasableSyntaxOnly'.
