@@ -14,6 +14,8 @@ export const RECOMMENDED_MODELS: ModelInfo[] = [
   { id: 'openai/gpt-4o', name: 'GPT-4o', contextLength: 128000 },
   { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', contextLength: 128000 },
   { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3', contextLength: 65536 },
+  { id: 'x-ai/grok-4.1-fast', name: 'Grok 4.1 Fast', contextLength: 200000 },
+  { id: 'x-ai/grok-3', name: 'Grok 3', contextLength: 131072 },
 ];
 
 export interface ChatMessage {

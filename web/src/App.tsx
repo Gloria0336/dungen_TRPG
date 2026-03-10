@@ -487,13 +487,40 @@ function SettingsModal({ config, models, onSave, onClose }: {
   const [apiKey, setApiKey] = useState(config.apiKey);
   const [modelId, setModelId] = useState(config.modelId);
   const [nsg, setNsg] = useState(config.nsgEnabled);
+  const [isValidating, setIsValidating] = useState(false);
+  const [keyStatus, setKeyStatus] = useState<'none' | 'valid' | 'invalid'>('none');
+
+  useEffect(() => {
+    if (!apiKey) {
+      setKeyStatus('none');
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsValidating(true);
+      try {
+        const res = await fetch('https://openrouter.ai/api/v1/models', {
+          headers: { Authorization: `Bearer ${apiKey}` }
+        });
+        setKeyStatus(res.ok ? 'valid' : 'invalid');
+      } catch {
+        setKeyStatus('invalid');
+      }
+      setIsValidating(false);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [apiKey]);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <h2>⚙️ 設定</h2>
         <div className="modal-field">
-          <label>OpenRouter API Key</label>
+          <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>OpenRouter API Key</span>
+            {isValidating && <span style={{ color: 'var(--sp-color)', fontSize: '0.75rem' }}>驗證中...</span>}
+            {!isValidating && keyStatus === 'valid' && <span style={{ color: 'var(--hp-high)', fontSize: '0.75rem' }}>✅ 驗證成功</span>}
+            {!isValidating && keyStatus === 'invalid' && <span style={{ color: 'var(--hp-low)', fontSize: '0.75rem' }}>❌ 無效的憑證</span>}
+          </label>
           <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-or-..." />
         </div>
         <div className="modal-field">

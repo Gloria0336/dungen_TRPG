@@ -346,3 +346,29 @@ html, body, #root {
 .text-sm { font-size: 0.8rem; }
 .text-dim { color: var(--text-dim); }
 .mt-1 { margin-top: 0.5rem; }
+
+/* ============ Mobile Adjustments (iPhone 17) ============ */
+@media screen and (max-width: 430px) {
+  .game-screen {
+    grid-template-rows: auto 1fr auto;
+  }
+  .center-area {
+    height: 100dvh;
+  }
+  .narrative-area {
+    padding: 0.8rem 1rem;
+  }
+  .action-buttons {
+    gap: 0.8rem;
+    justify-content: center;
+  }
+  .action-btn {
+    flex: 1 1 calc(50% - 0.8rem);
+    padding: 0.8rem 0.5rem;
+    font-size: 1rem;
+    font-weight: 500;
+  }
+  .input-row input {
+    font-size: 1rem;
+  }
+}
