@@ -100,11 +100,33 @@ html, body, #root {
   display: grid; grid-template-columns: 280px 1fr 280px;
   height: 100vh; gap: 0;
 }
+.game-screen.panel-collapsed {
+  grid-template-columns: 1fr 280px;
+}
 
 @media (max-width: 1024px) {
-  .game-screen { grid-template-columns: 1fr; }
+  .game-screen, .game-screen.panel-collapsed { grid-template-columns: 1fr; }
   .side-panel { display: none; }
 }
+
+.panel-toggle-btn {
+  margin-right: 0.5rem;
+  padding: 0.2rem 0.5rem;
+  border-color: var(--border);
+}
+
+@media screen and (max-width: 430px) {
+  .side-panel {
+    display: flex; /* Override previous none if necessary */
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    z-index: 50;
+    width: 280px;
+    background: var(--bg-secondary);
+    box-shadow: 5px 0 15px rgba(0,0,0,0.5);
+  }
+}
+
 
 /* ============ Panels ============ */
 .side-panel {
@@ -349,7 +371,8 @@ html, body, #root {
 
 /* ============ Mobile Adjustments (iPhone 17) ============ */
 @media screen and (max-width: 430px) {
-  .game-screen {
+  .game-screen, .game-screen.panel-collapsed {
+    grid-template-columns: 1fr;
     grid-template-rows: auto 1fr auto;
   }
   .center-area {

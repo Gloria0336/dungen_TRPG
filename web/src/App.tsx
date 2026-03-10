@@ -44,6 +44,7 @@ export default function App() {
   const [models, setModels] = useState<ModelInfo[]>(RECOMMENDED_MODELS);
   const [classSelection, setClassSelection] = useState<[string, string]>(['', '']);
   const [playerNames, setPlayerNames] = useState<[string, string]>(['', '']);
+  const [showPlayerPanel, setShowPlayerPanel] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [state?.log.length, narrativeText]);
@@ -252,15 +253,24 @@ export default function App() {
     requestAINarrative(state, undefined, `SPECIAL 階段: ${actionType}`);
   };
 
+  const handleRestart = () => {
+    if (window.confirm('確定要放棄當前進度並重新開始嗎？')) {
+      deleteSave();
+      setScreen('start');
+      setState(null);
+    }
+  };
+
   // --- Render Game ---
   const aliveEnemies = state.enemies.filter(e => e.isAlive);
   // Phase actions are rendered inline per phase
 
   return (
     <>
-      <div className="game-screen">
+      <div className={`game-screen ${!showPlayerPanel ? 'panel-collapsed' : ''}`}>
         {/* Left Panel - State */}
-        <div className="side-panel">
+        {showPlayerPanel && (
+          <div className="side-panel">
           <div className="panel-card">
             <div className="panel-title">冒險資訊</div>
             <div className="text-sm">Run: <span style={{ fontFamily: 'var(--font-mono)' }}>{state.runId}</span></div>
@@ -301,16 +311,23 @@ export default function App() {
             </div>
           )}
         </div>
+        )}
 
         {/* Center - Narrative & Actions */}
         <div className="center-area">
           <div className="phase-bar">
             <div className="phase-indicator">
+              <button className="btn btn-sm panel-toggle-btn" onClick={() => setShowPlayerPanel(!showPlayerPanel)}>
+                {showPlayerPanel ? '◀ 角色' : '角色 ▶'}
+              </button>
               <div className="phase-dot" />
               <span className="phase-name">{state.phase}</span>
             </div>
             <span className="floor-info">第 {state.floor} 層 / {state.maxFloor}</span>
-            <button className="btn btn-sm" onClick={() => setShowSettings(true)}>⚙️</button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="btn btn-sm btn-danger" onClick={handleRestart}>重新開始</button>
+              <button className="btn btn-sm" onClick={() => setShowSettings(true)}>⚙️</button>
+            </div>
           </div>
 
           <div className="narrative-area" ref={scrollRef}>
