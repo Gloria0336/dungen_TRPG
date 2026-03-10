@@ -10,12 +10,10 @@ import {
   hasSave, deleteSave, addLogEntry, createSnapshot,
 } from './engine/stateManager';
 import {
-  initCombat, processPlayerAction, processEnemyAttack,
-  chooseEnemyAction, processEndOfRound, isCombatVictory,
-  checkHiddenTrigger,
+  initCombat, processPlayerAction,
+  isCombatVictory, processNextTurn
 } from './engine/combatEngine';
 import { generateExploreEncounter, processRestAction } from './engine/phaseEngine';
-import { getCounterEffects } from './engine/counterEngine';
 import { generateGoldDrop, rollItemDrop, processGrowth } from './engine/lootEngine';
 // shop engine used indirectly via phase transitions
 import { formatDiceResult } from './engine/diceEngine';
@@ -25,6 +23,12 @@ import { RECOMMENDED_MODELS, fetchAvailableModels } from './ai/openrouter';
 import './index.css';
 
 const CONFIG_KEY = 'dungen_trpg_config';
+
+type ActionSelectionState = {
+  type: 'main' | 'attack_target' | 'skill_target' | 'item_target';
+  selectedSkillId?: string;
+  selectedItemId?: string;
+};
 
 function loadConfig(): GameConfig {
   try {
@@ -53,6 +57,7 @@ export default function App() {
     {race: '', age: '', appearance: '', background: ''}
   ]);
   const [biographyText, setBiographyText] = useState('');
+  const [actionState, setActionState] = useState<ActionSelectionState>({ type: 'main' });
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [state?.log.length, narrativeText]);
@@ -187,10 +192,20 @@ export default function App() {
       state.enemies = encounter.enemies;
       state.combat = initCombat(state.players!, state.enemies);
       state.phase = 'COMBAT';
+      setActionState({ type: 'main' });
       addLogEntry(state, 'system', `遭遇敵人！${encounter.enemies.map(e => `${e.templateName}(${e.tier})`).join('、')}`);
+      
+      const nextResults = processNextTurn(state);
+      for (const res of nextResults) {
+        res.diceResults.forEach(d => addLogEntry(state, 'dice', formatDiceResult(d)));
+        if (res.damageDealt > 0) addLogEntry(state, 'combat', `${res.actorName} 對 ${res.targetName} 造成 ${res.damageDealt} 點傷害`);
+        if (res.controlApplied) addLogEntry(state, 'combat', `${res.targetName} 被控制！`);
+        if (res.action === '被控制，無法行動') addLogEntry(state, 'combat', `${res.actorName} 被控制中，跳過行動`);
+      }
+
       createSnapshot(state);
       setState({ ...state });
-      requestAINarrative(state, undefined, `探索途中遭遇了 ${encounter.enemies.map(e => e.templateName).join('和')}！戰鬥即將開始。`);
+      requestAINarrative(state, nextResults.length > 0 ? nextResults : undefined, `探索途中遭遇了 ${encounter.enemies.map(e => e.templateName).join('和')}！戰鬥即將開始。`);
     } else if (encounter.type === 'event') {
       state.phase = 'EVENT';
       addLogEntry(state, 'system', `觸發事件: ${encounter.event?.templateName ?? '未知事件'}`);
@@ -201,46 +216,38 @@ export default function App() {
 
   const handleCombatAction = (action: CombatAction) => {
     if (!state.combat || !state.players) return;
-    const player = state.players[action.playerIndex];
+    const pIdx = state.combat.waitingForPlayer;
+    if (pIdx === null) return;
+    action.playerIndex = pIdx;
+
+    const player = state.players[pIdx];
     const result = processPlayerAction(action, player, state.enemies, state);
 
     result.diceResults.forEach(d => addLogEntry(state, 'dice', formatDiceResult(d)));
     if (result.damageDealt > 0) addLogEntry(state, 'combat', `${result.actorName} 對 ${result.targetName} 造成 ${result.damageDealt} 點傷害`);
+    if (result.controlApplied) addLogEntry(state, 'combat', `${result.targetName} 被控制！`);
 
     state.combat.pendingResults.push(result);
 
-    // Process enemy turns
-    const enemyResults: CombatTurnResult[] = [];
-    for (const enemy of state.enemies.filter(e => e.isAlive)) {
-      if (enemy.isControlled) {
-        addLogEntry(state, 'combat', `${enemy.templateName} 被控制中，跳過行動`);
-        continue;
-      }
-      const { skill, targetPlayerIndex } = chooseEnemyAction(enemy, state.players);
-      const target = state.players[targetPlayerIndex];
-      const counter = getCounterEffects(enemy, target, state.floor);
-      const eResult = processEnemyAttack(enemy, target, skill, counter?.hitMod ?? 0, state.combat.softPenalty, state.nsgEnabled);
-
-      eResult.diceResults.forEach(d => addLogEntry(state, 'dice', formatDiceResult(d)));
-      if (eResult.damageDealt > 0) addLogEntry(state, 'combat', `${enemy.templateName} 對 ${eResult.targetName} 造成 ${eResult.damageDealt} 點傷害`);
-      if (eResult.controlApplied) addLogEntry(state, 'combat', `${eResult.targetName} 被控制！`);
-      if (counter) addLogEntry(state, 'system', `克制效果: ${counter.reason} (${counter.level})`);
-
-      // Hidden trigger check
-      const htResult = checkHiddenTrigger(enemy, target);
-      if (htResult?.success) {
-        addLogEntry(state, 'system', `⚠️ 隱藏觸發！進入 SPECIAL 階段`);
-        state.phase = 'SPECIAL';
-        state.specialTurn = 1;
-        state.specialMaxTurn = 4;
-      }
-
-      enemyResults.push(eResult);
-      state.combat.pendingResults.push(eResult);
+    // Continue the turn loop
+    const nextResults = processNextTurn(state);
+    let specialTriggered = false;
+    for (const res of nextResults) {
+      res.diceResults.forEach(d => {
+         addLogEntry(state, 'dice', formatDiceResult(d));
+         if (d.purpose.includes('隱藏觸發') && d.success) specialTriggered = true;
+      });
+      if (res.damageDealt > 0) addLogEntry(state, 'combat', `${res.actorName} 對 ${res.targetName} 造成 ${res.damageDealt} 點傷害`);
+      if (res.controlApplied) addLogEntry(state, 'combat', `${res.targetName} 被控制！`);
+      if (res.action === '被控制，無法行動') addLogEntry(state, 'combat', `${res.actorName} 被控制中，跳過行動`);
     }
 
-    processEndOfRound(state.players, state.enemies, state.combat);
-    state.combat.roundNumber++;
+    if (specialTriggered) {
+      addLogEntry(state, 'system', `⚠️ 隱藏觸發！進入 SPECIAL 階段`);
+      state.phase = 'SPECIAL';
+      state.specialTurn = 1;
+      state.specialMaxTurn = 4;
+    }
 
     if (state.combat.isComplete) {
       if (isCombatVictory(state.enemies)) {
@@ -259,16 +266,17 @@ export default function App() {
         state.combat = null;
         state.enemies = [];
       } else {
-        if (state.players.every(p => !p.isAlive)) {
+        if (state.players.every(p => !p.isAlive || p.isBD)) {
           state.phase = 'END';
           addLogEntry(state, 'system', '💀 兩名角色皆陣亡，冒險結束。');
         }
       }
     }
 
+    setActionState({ type: 'main' });
     createSnapshot(state);
     setState({ ...state });
-    requestAINarrative(state, [result, ...enemyResults]);
+    requestAINarrative(state, [result, ...nextResults]);
   };
 
   const handleRestAction = (index: number) => {
@@ -519,25 +527,91 @@ export default function App() {
                 <button className="btn btn-primary" onClick={handleExplore} disabled={isStreaming}>⚔️ 前進探索</button>
               </div>
             )}
-            {state.phase === 'COMBAT' && state.players && (
+            {state.phase === 'COMBAT' && state.players && state.combat && state.combat.waitingForPlayer !== null && (
               <div className="action-buttons">
-                {aliveEnemies.map(e => (
-                  <span key={e.instanceId}>
-                    {state.players!.filter(p => p.isAlive && !p.isBD && !p.isControlled).map((p, pi) => (
-                      <span key={pi}>
-                        <button className="action-btn" disabled={isStreaming} onClick={() => handleCombatAction({ type: 'attack', targetId: e.instanceId, playerIndex: state.players!.indexOf(p) })}>
-                          {p.name}: 攻擊 {e.templateName}
+                {(() => {
+                  const pIdx = state.combat.waitingForPlayer;
+                  const currentPlayer = state.players[pIdx];
+                  
+                  if (actionState.type === 'main') {
+                    return (
+                      <>
+                        <div className="text-sm" style={{ width: '100%', marginBottom: '0.3rem', color: 'var(--sp-color)' }}>
+                          行動階段：{currentPlayer.name} ({currentPlayer.className})
+                        </div>
+                        <button className="action-btn" disabled={isStreaming} onClick={() => setActionState({ type: 'attack_target' })}>
+                          ⚔️ 攻擊
                         </button>
-                        {p.skills.filter(s => (!s.currentCooldown || s.currentCooldown === 0) && p.sp >= s.spCost).map(s => (
-                          <button key={s.id} className="action-btn skill" disabled={isStreaming} onClick={() => handleCombatAction({ type: 'skill', skillId: s.id, targetId: e.instanceId, playerIndex: state.players!.indexOf(p) })}>
-                            {p.name}: {s.name} (SP:{s.spCost})
+                        {currentPlayer.skills.filter(s => (!s.currentCooldown || s.currentCooldown === 0) && currentPlayer.sp >= s.spCost).map(s => (
+                          <button key={s.id} className="action-btn skill" disabled={isStreaming} onClick={() => {
+                            if (s.hitRule.includes('全體') || s.hitRule.includes('自身')) {
+                              handleCombatAction({ type: 'skill', skillId: s.id, playerIndex: pIdx });
+                            } else {
+                              setActionState({ type: 'skill_target', selectedSkillId: s.id });
+                            }
+                          }}>
+                            ✨ {s.name} (SP:{s.spCost})
                           </button>
                         ))}
-                      </span>
-                    ))}
-                  </span>
-                ))}
-                <button className="action-btn" disabled={isStreaming} onClick={() => handleCombatAction({ type: 'defend', playerIndex: 0 })}>防禦</button>
+                        <button className="action-btn" disabled={isStreaming} onClick={() => handleCombatAction({ type: 'defend', playerIndex: pIdx })}>
+                          🛡️ 防禦
+                        </button>
+                        <button className="action-btn" disabled={isStreaming} onClick={() => handleCombatAction({ type: 'flee', playerIndex: pIdx })}>
+                          🏃 逃跑
+                        </button>
+                      </>
+                    );
+                  }
+                  
+                  if (actionState.type === 'attack_target') {
+                    return (
+                      <>
+                        <div className="text-sm" style={{ width: '100%', marginBottom: '0.3rem', color: 'var(--hp-color)' }}>
+                          選擇攻擊目標：
+                        </div>
+                        {aliveEnemies.map(e => (
+                          <button key={e.instanceId} className="action-btn" disabled={isStreaming} onClick={() => handleCombatAction({ type: 'attack', targetId: e.instanceId, playerIndex: pIdx })}>
+                            🎯 {e.templateName}
+                          </button>
+                        ))}
+                        <button className="action-btn" disabled={isStreaming} onClick={() => setActionState({ type: 'main' })}>
+                          ↩️ 返回
+                        </button>
+                      </>
+                    );
+                  }
+
+                  if (actionState.type === 'skill_target') {
+                    const skill = currentPlayer.skills.find(s => s.id === actionState.selectedSkillId);
+                    const isHealing = skill?.effectSummary.includes('回復') || skill?.effectSummary.includes('治癒') || skill?.effectSummary.includes('護盾');
+                    
+                    return (
+                      <>
+                        <div className="text-sm" style={{ width: '100%', marginBottom: '0.3rem', color: 'var(--sp-color)' }}>
+                          選擇技能目標：{skill?.name}
+                        </div>
+                        {isHealing ? (
+                          state.players.filter(p => !p.isBD).map((p, i) => (
+                            <button key={i} className="action-btn skill" disabled={isStreaming} onClick={() => handleCombatAction({ type: 'skill', skillId: skill!.id, targetId: p.name /* uses name as id for player targets temporarily, though skill targeting players isn't fully using targetId yet */, playerIndex: pIdx })}>
+                              ❤️ {p.name} (HP: {p.hp}/{p.maxHp})
+                            </button>
+                          ))
+                        ) : (
+                          aliveEnemies.map(e => (
+                            <button key={e.instanceId} className="action-btn skill" disabled={isStreaming} onClick={() => handleCombatAction({ type: 'skill', skillId: skill!.id, targetId: e.instanceId, playerIndex: pIdx })}>
+                              🎯 {e.templateName}
+                            </button>
+                          ))
+                        )}
+                        <button className="action-btn" disabled={isStreaming} onClick={() => setActionState({ type: 'main' })}>
+                          ↩️ 返回
+                        </button>
+                      </>
+                    );
+                  }
+                  
+                  return null;
+                })()}
               </div>
             )}
             {state.phase === 'REST' && (

@@ -3,6 +3,7 @@ import type {
   CombatAction, TurnAction, DiceResult, MonsterSkill, GameState,
 } from '../types';
 import { hitCheck, evadeCheck, percentCheck, getSPWeightMod, randomFloat, randomInt, parseBaseHit } from './diceEngine';
+import { getCounterEffects } from './counterEngine';
 import { CLASS_DB } from '../data/classes';
 
 // ============================================================
@@ -316,13 +317,6 @@ export function processPlayerAction(
 
   if (player.isControlled) {
     result.action = '被控制，無法行動';
-    // Decrement control turns
-    player.controlTurns--;
-    if (player.controlTurns <= 0) {
-      player.isControlled = false;
-      player.controlImmunity = true;
-      player.controlImmunityTurns = 1;
-    }
     return result;
   }
 
@@ -525,6 +519,113 @@ export function initCombat(
     waitingForPlayer: null,
   };
 }
+
+/** Process the next turn iteratively until a player needs input or combat ends */
+export function processNextTurn(state: GameState): CombatTurnResult[] {
+  const combat = state.combat;
+  if (!combat || combat.isComplete || !state.players) return [];
+
+  const results: CombatTurnResult[] = [];
+
+  while (true) {
+    if (combat.isComplete) break;
+
+    // End of Round check
+    if (combat.currentTurnIndex >= combat.turnOrder.length) {
+      processEndOfRound(state.players, state.enemies, combat);
+      if (combat.isComplete) break;
+
+      combat.roundNumber++;
+      combat.turnOrder = determineTurnOrder(state.players, state.enemies);
+      combat.currentTurnIndex = 0;
+      continue;
+    }
+
+    const currentTurn = combat.turnOrder[combat.currentTurnIndex];
+
+    if (currentTurn.isPlayer) {
+      const p = state.players[currentTurn.playerIndex!];
+      if (!p.isAlive || p.isBD) {
+        combat.currentTurnIndex++;
+        continue;
+      }
+
+      if (p.isControlled) {
+        // Auto-skip controlled player
+        results.push({
+          actorName: `${p.name}(${p.className})`,
+          actorIsPlayer: true,
+          targetName: '',
+          action: '被控制，無法行動',
+          diceResults: [],
+          damageDealt: 0, hpChange: 0, spChange: 0, desChange: 0,
+          upperChange: 0, lowerChange: 0, controlApplied: false, controlDuration: 0,
+          narrative: ''
+        });
+        combat.currentTurnIndex++;
+      } else {
+        // Needs player input
+        combat.waitingForPlayer = currentTurn.playerIndex!;
+        break;
+      }
+    } else {
+      // Enemy turn
+      const enemy = state.enemies.find((e) => e.instanceId === currentTurn.entityId);
+      if (!enemy || !enemy.isAlive) {
+        combat.currentTurnIndex++;
+        continue;
+      }
+
+      combat.waitingForPlayer = null; // No player input needed
+
+      if (enemy.isControlled) {
+        results.push({
+          actorName: enemy.templateName,
+          actorIsPlayer: false,
+          targetName: '',
+          action: '被控制，無法行動',
+          diceResults: [],
+          damageDealt: 0, hpChange: 0, spChange: 0, desChange: 0,
+          upperChange: 0, lowerChange: 0, controlApplied: false, controlDuration: 0,
+          narrative: ''
+        });
+      } else {
+        const { skill, targetPlayerIndex } = chooseEnemyAction(enemy, state.players);
+        const targetPlayer = state.players[targetPlayerIndex];
+        const counter = getCounterEffects(enemy, targetPlayer, state.floor);
+        
+        const res = processEnemyAttack(enemy, targetPlayer, skill, counter?.hitMod ?? 0, combat.softPenalty, state.nsgEnabled);
+        
+        if (counter) {
+           res.diceResults.push({
+             purpose: '種族克制',
+             threshold: 100, roll: 1, success: true,
+             effects: `克制判定: ${counter.reason} (${counter.level})`
+           });
+        }
+        
+        const hiddenRes = checkHiddenTrigger(enemy, targetPlayer);
+        if (hiddenRes) res.diceResults.push(hiddenRes);
+        
+        results.push(res);
+      }
+
+      combat.currentTurnIndex++;
+    }
+
+    // Check victory / defeat immediately
+    const allEnemiesDead = state.enemies.every((e) => !e.isAlive);
+    const allPlayersDead = state.players.every((p) => !p.isAlive || p.isBD);
+    if (allEnemiesDead || allPlayersDead) {
+      combat.isComplete = true;
+      break;
+    }
+  }
+
+  combat.pendingResults.push(...results);
+  return results;
+}
+
 
 /** Process end of round: status effects, control timers, cooldowns, soft penalty */
 export function processEndOfRound(

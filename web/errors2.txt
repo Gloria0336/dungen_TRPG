@@ -1,0 +1,5 @@
+src/App.tsx(13,36): error TS6133: 'processEnemyAttack' is declared but its value is never read.
+src/App.tsx(14,3): error TS6133: 'chooseEnemyAction' is declared but its value is never read.
+src/App.tsx(14,22): error TS6133: 'processEndOfRound' is declared but its value is never read.
+src/App.tsx(15,3): error TS6133: 'checkHiddenTrigger' is declared but its value is never read.
+src/App.tsx(18,1): error TS6133: 'getCounterEffects' is declared but its value is never read.
