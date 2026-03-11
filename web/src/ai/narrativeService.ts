@@ -47,6 +47,15 @@ export function buildSystemPrompt(state: GameState): string {
     context += `- ${getDesTierPrompt(totalDes, state.nsgEnabled)}\n`;
   }
 
+  // Strict combat narrative constraints
+  if (state.phase === 'COMBAT') {
+    context += '\n【戰鬥敘事鐵則 — 絕對禁止違反】\n';
+    context += '1. 你絕對不可以描述任何目標死亡，除非系統資料明確標示「已擊殺」。即使造成大量傷害，只要目標 HP > 0，就必須描述其仍然存活（受傷、搖搖欲墜等皆可，但不可死亡）。\n';
+    context += '2. 你必須嚴格按照 [本回合事件] 中的「對 XXX」來決定攻擊對象。絕對不可將攻擊對象替換成其他敵人或角色。\n';
+    context += '3. 如果系統標示「目標已擊殺」，你才可以描述該敵人的死亡場景。\n';
+    context += '4. 每段敘事的描述不可與 [敵人] 的 HP 資訊矛盾。\n';
+  }
+
   return context;
 }
 
@@ -139,7 +148,7 @@ export function buildSceneSummary(
   if (combatResults && combatResults.length > 0) {
     summary += '[本回合事件]\n';
     for (const r of combatResults) {
-      summary += `- ${r.actorName} 使用「${r.action}」→ `;
+      summary += `- ${r.actorName} 使用「${r.action}」對 ${r.targetName || '未知目標'} → `;
       if (r.diceResults.length > 0) {
         const d = r.diceResults[0];
         summary += `1D100=${d.roll}, ${d.success ? '命中' : '未命中'}(門檻${d.threshold}%) `;
@@ -148,6 +157,26 @@ export function buildSceneSummary(
       if (r.controlApplied) summary += `→ 施加控制${r.controlDuration}回合 `;
       if (r.upperChange) summary += `上衣耐久${r.upperChange} `;
       if (r.lowerChange) summary += `下衣耐久${r.lowerChange} `;
+
+      // Append target current HP and alive status
+      if (r.targetName && state.enemies.length > 0) {
+        const targetEnemy = state.enemies.find(e => e.templateName === r.targetName);
+        if (targetEnemy) {
+          if (targetEnemy.isAlive) {
+            summary += `[結果: ${r.targetName} 剩餘 HP ${targetEnemy.hp}/${targetEnemy.maxHp}, 尚未死亡]`;
+          } else {
+            summary += `[目標已擊殺]`;
+          }
+        }
+      }
+      // Check if target is a player (for healing/self-targeting skills)
+      if (r.targetName && state.players) {
+        const targetPlayer = state.players.find(p => r.targetName.includes(p.name));
+        if (targetPlayer) {
+          summary += `[${targetPlayer.name} 目前 HP ${targetPlayer.hp}/${targetPlayer.maxHp}]`;
+        }
+      }
+
       summary += '\n';
     }
   }
