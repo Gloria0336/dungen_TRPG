@@ -95,6 +95,17 @@ export const POTION_DB: Record<string, PotionDef> = {
     notes: '禁忌的增幅劑，讓理智換取狂暴的力量',
     jailbreakNotes: '吸入後眼前會浮現幻覺，將身邊的所有事物都看作充滿肉感的交配對象。',
   },
+  'IT-POT-003': {
+    id: 'IT-POT-003',
+    templateName: '寧靜藥水',
+    itemType: 'potion',
+    effectSummary: '回復 5 HP，DES -30',
+    stateChanges: { hp_delta: 5, des_delta: -30 },
+    shopPrice: 40,
+    usePhase: ['EXPLORE', 'REST', 'SHOP'] as Phase[],
+    notes: '由清涼草提煉出的藥水，能快速平復狂躁的心情',
+    jailbreakNotes: '雖然能帶來平靜，但會讓角色陷入短暫的空虛與虛無感，對外界刺激的抵抗力暫時下降。',
+  },
 };
 
 export function getPotionDef(id: string): PotionDef | undefined {

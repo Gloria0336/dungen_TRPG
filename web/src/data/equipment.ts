@@ -562,6 +562,22 @@ export const EQUIPMENT_DB: Record<string, EquipmentDef> = {
     notes: '極高韌性的鱗片，能抵禦石化效果。',
     jailbreakNotes: '冰冷的鱗片貼在腹部，會隨時吸取宿主的體溫併發出淫靡的共鳴聲。',
   },
+  'IT-ACC-COOL': {
+    id: 'IT-ACC-COOL',
+    templateName: '清涼吊墜',
+    itemType: 'accessory',
+    drU: 0,
+    drL: 0,
+    durabilityMax: 100,
+    tierSteps: { '100_80': 0, '79_60': 0, '59_30': 0, '30_0': 0 },
+    repairNeeds: ['魔力結晶x1'],
+    sideEffects: [
+      { trigger: 'onTurnEnd', effectType: 'des', amount: -2, description: '吊墜發出微涼氣息，平復了慾望' }
+    ],
+    equipSlot: 'Accessory',
+    notes: '散發淡淡涼意的吊墜，能有效抑制暴躁與慾望。',
+    jailbreakNotes: '雖然涼爽，但緊貼肌膚的冰冷感有時會激起身體另一種深層的敏感反應。',
+  },
 };
 
 export function getEquipmentDef(id: string): EquipmentDef | undefined {

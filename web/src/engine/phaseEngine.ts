@@ -209,7 +209,9 @@ export function processRestAction(
       state.players[1].hp = Math.min(state.players[1].maxHp, state.players[1].hp + hp2);
       state.players[0].sp = Math.min(state.players[0].maxSp, state.players[0].sp + sp1);
       state.players[1].sp = Math.min(state.players[1].maxSp, state.players[1].sp + sp2);
-      return { result: `休息完成。角色1回復 HP+${hp1} SP+${sp1}，角色2回復 HP+${hp2} SP+${sp2}`, hpRecover: hp1 + hp2, spRecover: sp1 + sp2 };
+      state.players[0].des = Math.max(0, state.players[0].des - 5);
+      state.players[1].des = Math.max(0, state.players[1].des - 5);
+      return { result: `休息完成。角色1回復 HP+${hp1} SP+${sp1} DES-5，角色2回復 HP+${hp2} SP+${sp2} DES-5`, hpRecover: hp1 + hp2, spRecover: sp1 + sp2 };
     }
     case 2: {
       // Explore floor (higher event chance)
