@@ -1,6 +1,7 @@
 import type {
   PlayerState, EnemyState, CombatState, CombatTurnResult,
   CombatAction, TurnAction, DiceResult, MonsterSkill, GameState,
+  StatusEffect,
 } from '../types';
 import { hitCheck, evadeCheck, percentCheck, getSPWeightMod, randomFloat, randomInt, parseBaseHit } from './diceEngine';
 import { getCounterEffects } from './counterEngine';
@@ -65,9 +66,20 @@ export function calculateRawDamage(atk: number): number {
   return Math.round(atk * randomFloat(0.9, 1.1));
 }
 
-/** Calculate final damage after DR% */
-export function calculateFinalDamage(rawDamage: number, drPercent: number): number {
-  return Math.max(1, Math.round(rawDamage * (1 - drPercent / 100)));
+/** 
+ * Calculate final damage applying the new formula:
+ * (Raw DMG) * (1 + Amp%) * (1 - DR%) * (1 - SkillDR%) - FlatDR
+ */
+export function calculateFinalDamage(
+  rawDamage: number,
+  ampPercent: number,
+  drPercent: number,
+  skillDrPercent: number,
+  flatDr: number
+): number {
+  const amped = rawDamage * (1 + ampPercent / 100);
+  const reduced = amped * (1 - drPercent / 100) * (1 - skillDrPercent / 100);
+  return Math.max(1, Math.round(reduced - flatDr));
 }
 
 /** Calculate DR% for a player based on durability tiers */
@@ -119,26 +131,99 @@ export function applyDurabilityDamage(
 
   switch (target) {
     case '上':
-      upperChange = -(amount ?? 5);
+      upperChange = -(amount ?? 5) * 1.3;
       player.upperDurability = Math.max(0, player.upperDurability + upperChange);
       break;
     case '下':
-      lowerChange = -(amount ?? 5);
+      lowerChange = -(amount ?? 5) * 1.3;
       player.lowerDurability = Math.max(0, player.lowerDurability + lowerChange);
       break;
     case '雙':
-      upperChange = -(amount ?? 3);
-      lowerChange = -(amount ?? 3);
+      upperChange = -(amount ?? 3) * 1.3;
+      lowerChange = -(amount ?? 3) * 1.3;
       player.upperDurability = Math.max(0, player.upperDurability + upperChange);
       player.lowerDurability = Math.max(0, player.lowerDurability + lowerChange);
       break;
     case '無':
       break;
   }
+  
+  // Round changes to nearest integer
+  upperChange = Math.round(upperChange);
+  lowerChange = Math.round(lowerChange);
+  player.upperDurability = Math.round(player.upperDurability);
+  player.lowerDurability = Math.round(player.lowerDurability);
 
   // Recalculate DR after durability change
   player.drPercent = calculateDR(player);
   return { upperChange, lowerChange };
+}
+
+/** Apply side effects of equipment based on trigger */
+export function applyEquipmentSideEffects(
+  player: PlayerState,
+  trigger: 'onAttack' | 'onSkill' | 'onDefend' | 'onTurnEnd' | 'onTurnStart',
+  resultObj: CombatTurnResult // To push changes and narratives
+): void {
+  const equips = [player.equippedWeapon, player.equippedUpper, player.equippedLower];
+  for (const eq of equips) {
+    if (!eq || !eq.sideEffects) continue;
+    
+    for (const effect of eq.sideEffects) {
+      if (effect.trigger === trigger) {
+        // Apply effect
+        let changeHandled = false;
+        switch (effect.effectType) {
+          case 'hp':
+            player.hp = Math.max(0, Math.min(player.maxHp, player.hp + effect.amount));
+            resultObj.hpChange += effect.amount;
+            changeHandled = true;
+            break;
+          case 'sp':
+            player.sp = Math.max(0, Math.min(player.maxSp, player.sp + effect.amount));
+            resultObj.spChange += effect.amount;
+            changeHandled = true;
+            break;
+          case 'des':
+            player.des = Math.max(0, Math.min(100, player.des + effect.amount));
+            resultObj.desChange += effect.amount;
+            changeHandled = true;
+            break;
+          case 'agi':
+            player.agi = Math.max(0, player.agi + effect.amount);
+            changeHandled = true;
+            break;
+          case 'str':
+            player.str = Math.max(0, player.str + effect.amount);
+            changeHandled = true;
+            break;
+          case 'wil':
+            player.wil = Math.max(0, player.wil + effect.amount);
+            changeHandled = true;
+            break;
+        }
+        
+        if (changeHandled) {
+           const logMsg = `[裝備副作用 - ${eq.name}] ${effect.description}`;
+           resultObj.diceResults.push({
+             purpose: '裝備副作用',
+             threshold: 0, roll: 0, success: true,
+             effects: logMsg
+           });
+        }
+      }
+    }
+  }
+}
+
+/** Sum all active statusEffect modifiers for a given stat */
+export function getStatusEffectMod(
+  effects: StatusEffect[],
+  stat: 'hit' | 'evade' | 'agi' | 'str' | 'wil' | 'hp'
+): number {
+  return effects
+    .filter(se => se.type === 'statMod' && se.targetStat === stat)
+    .reduce((sum, se) => sum + (se.amount ?? 0), 0);
 }
 
 /** Get DES/SP impact amount by level */
@@ -165,19 +250,26 @@ export function chooseEnemyAction(
   const target = alive[Math.floor(Math.random() * alive.length)];
 
   // Skill selection based on behavior
-  let chosenSkill = enemy.skills[0];
+  // Filter skills that are not on cooldown
+  const availableSkills = enemy.skills.filter(s => !s.currentCooldown || s.currentCooldown <= 0);
+  if (availableSkills.length === 0) {
+    // If all skills are on cooldown (shouldn't happen with basic attacks), fallback to first skill
+    return { skill: enemy.skills[0], targetPlayerIndex: target.i };
+  }
+
+  let chosenSkill = availableSkills[0];
   const behaviorStr = enemy.behaviorRules.join(' ');
 
   if (behaviorStr.includes('控制') && !target.p.isControlled) {
-    const controlSkill = enemy.skills.find((s) => s.control);
+    const controlSkill = availableSkills.find((s) => s.control);
     if (controlSkill) chosenSkill = controlSkill;
   } else if (behaviorStr.includes('控制') && target.p.isControlled) {
-    const damageSkill = enemy.skills.find((s) => !s.control) ?? enemy.skills[0];
+    const damageSkill = availableSkills.find((s) => !s.control) ?? availableSkills[0];
     chosenSkill = damageSkill;
   }
 
   // Boss ultimate logic
-  const ultSkill = enemy.skills.find((s) => s.id.includes('ULT'));
+  const ultSkill = availableSkills.find((s) => s.id.includes('ULT'));
   if (ultSkill && enemy.tier === 'C') {
     const hpPercent = enemy.hp / enemy.maxHp;
     if (hpPercent < 0.4) chosenSkill = ultSkill;
@@ -226,20 +318,23 @@ export function processEnemyAttack(
       effects: '目標被控制中，自動命中',
     };
   } else {
+    // Player's hit debuff makes enemy more likely to land
+    const playerHitDebuff = getStatusEffectMod(player.statusEffects, 'hit');
     hitResult = hitCheck(
       baseHit,
       0,
       counterHitMod,
-      0,
+      -playerHitDebuff,
       `${enemy.templateName}: ${skill.name} 命中判定`
     );
   }
   result.diceResults.push(hitResult);
 
   if (!hitResult.success) {
-    // Check player dodge
+    // Check player dodge (apply evade status effect mod)
+    const evadeMod = getStatusEffectMod(player.statusEffects, 'evade');
     const evadeResult = evadeCheck(
-      Math.floor(player.agi * 3),
+      Math.floor(player.agi * 3) + evadeMod,
       player.isControlled,
       softPenalty,
       `${player.name} 閃避判定`
@@ -252,40 +347,78 @@ export function processEnemyAttack(
 
   if (hitResult.success) {
     // Calculate damage
-    const rawDmg = calculateRawDamage(enemy.atk);
-    const finalDmg = calculateFinalDamage(rawDmg, player.drPercent);
+    const damageMultiplier = skill.damageMultiplier ?? 1.0;
+    let rawDmg = calculateRawDamage(Math.round(enemy.atk * damageMultiplier));
+    // Apply monster tier damage modifiers
+    if (enemy.tier === 'A' || enemy.tier === 'B') {
+        rawDmg *= 0.8; // -20%
+    } else if (enemy.tier === 'C') {
+        rawDmg *= 0.9; // -10%
+    }
+    const finalDmg = calculateFinalDamage(
+      rawDmg, 
+      enemy.ampPercent || 0, 
+      player.drPercent, 
+      player.skillDrPercent, 
+      player.flatDr
+    );
     result.damageDealt = finalDmg;
     result.hpChange = -finalDmg;
     player.hp = Math.max(0, player.hp - finalDmg);
 
     // DES/SP impact
-    const desAmount = getImpactAmount(skill.desSpImpactLevel);
+    const desAmount = skill.desImpactAmount ?? getImpactAmount(skill.desSpImpactLevel);
     result.desChange = desAmount;
     player.des = Math.min(100, player.des + desAmount);
 
-    // SP drain (proportional to impact)
-    const spDrain = Math.floor(desAmount * 0.5);
+    // SP drain (proportional to impact if not explicitly set)
+    const spDrain = skill.spDrainAmount ?? Math.floor(desAmount * 0.5);
     result.spChange = -spDrain;
     player.sp = Math.max(0, player.sp - spDrain);
 
     // Durability damage
-    const durResult = applyDurabilityDamage(player, skill.durabilityTarget);
+    const durResult = applyDurabilityDamage(player, skill.durabilityTarget, skill.durabilityDamage);
     result.upperChange = durResult.upperChange;
     result.lowerChange = durResult.lowerChange;
 
     // Control effect
     if (skill.control && !player.controlImmunity) {
+      const controlDuration = skill.controlTurns ?? 1;
       result.controlApplied = true;
-      result.controlDuration = 1;
+      result.controlDuration = controlDuration;
       player.isControlled = true;
-      player.controlTurns = 1;
+      player.controlTurns = controlDuration;
       player.controlSource = `${enemy.templateName}的[${skill.name}]`;
+    }
+
+    // Special Effects
+    if (skill.specialEffects) {
+      for (const effect of skill.specialEffects) {
+        if (effect.type === 'statMod' && effect.targetStat && effect.amount) {
+          player.statusEffects.push({
+            name: `${skill.name}附加效果`,
+            duration: effect.duration,
+            effect: `${effect.targetStat.toUpperCase()} ${effect.amount > 0 ? '+' : ''}${effect.amount}`,
+            type: effect.type,
+            targetStat: effect.targetStat,
+            amount: effect.amount,
+          });
+          // Apply stat mod directly
+          if (effect.targetStat === 'agi') player.agi = Math.max(0, player.agi + effect.amount);
+          if (effect.targetStat === 'wil') player.wil = Math.max(0, player.wil + effect.amount);
+          if (effect.targetStat === 'str') player.str = Math.max(0, player.str + effect.amount);
+        }
+      }
     }
 
     // Check BD condition (HP or DES reaches 0/max)
     if (player.hp <= 0 || player.des >= 100) {
-      player.isBD = true;
       player.isAlive = player.hp > 0; // Can still be alive but in BD
+    }
+
+    // Set skill cooldown after use
+    if (skill.cooldown > 0) {
+      skill.currentCooldown = skill.cooldown;
     }
   }
 
@@ -334,14 +467,26 @@ export function processPlayerAction(
       result.action = '普通攻擊';
 
       const atk = calculateATK(player);
-      const hitResult = hitCheck(75, spMod, 0, 0, `${player.name} 普攻命中判定`);
+      const hitMod = getStatusEffectMod(player.statusEffects, 'hit');
+      const hitResult = hitCheck(75, spMod, 0, hitMod, `${player.name} 普攻命中判定`);
       result.diceResults.push(hitResult);
 
       if (hitResult.success) {
-        const rawDmg = calculateRawDamage(atk);
-        result.damageDealt = rawDmg;
-        target.hp = Math.max(0, target.hp - rawDmg);
+        let rawDmg = calculateRawDamage(atk);
+        rawDmg = Math.round(rawDmg * 1.15); // +15% player damage
+        
+        const finalDmg = calculateFinalDamage(
+          rawDmg,
+          player.ampPercent,
+          target.drPercent,
+          target.skillDrPercent,
+          target.flatDr
+        );
+        result.damageDealt = finalDmg;
+        target.hp = Math.max(0, target.hp - finalDmg);
         if (target.hp <= 0) target.isAlive = false;
+        
+        applyEquipmentSideEffects(player, 'onAttack', result);
       }
       break;
     }
@@ -400,15 +545,26 @@ export function processPlayerAction(
       // Attack skills
       if (target) {
         const baseHit = parseBaseHit(skill.hitRule);
-        const hitResult = hitCheck(baseHit, spMod, 0, 0, `${player.name}: ${skill.name} 命中判定`);
+        const hitMod = getStatusEffectMod(player.statusEffects, 'hit');
+        const hitResult = hitCheck(baseHit, spMod, 0, hitMod, `${player.name}: ${skill.name} 命中判定`);
         result.diceResults.push(hitResult);
 
         if (hitResult.success) {
           const atk = calculateATK(player);
           const skillMultiplier = skill.spCost >= 20 ? 1.8 : 1.3;
-          const rawDmg = Math.round(calculateRawDamage(atk) * skillMultiplier);
-          result.damageDealt = rawDmg;
-          target.hp = Math.max(0, target.hp - rawDmg);
+          let rawDmg = Math.round(calculateRawDamage(atk) * skillMultiplier);
+          rawDmg = Math.round(rawDmg * 1.15); // +15% player damage
+          
+          const finalDmg = calculateFinalDamage(
+            rawDmg,
+            player.ampPercent,
+            target.drPercent,
+            target.skillDrPercent,
+            target.flatDr
+          );
+          
+          result.damageDealt = finalDmg;
+          target.hp = Math.max(0, target.hp - finalDmg);
           if (target.hp <= 0) target.isAlive = false;
 
           // Control effect on enemy
@@ -428,6 +584,8 @@ export function processPlayerAction(
               result.controlDuration = 1;
             }
           }
+          
+          applyEquipmentSideEffects(player, 'onSkill', result);
         }
       }
       break;
@@ -436,12 +594,13 @@ export function processPlayerAction(
     case 'defend': {
       result.action = '防禦';
       result.targetName = '自身';
-      // Temporary DR boost for this round
+      // Temporary Skill DR boost for this round
       player.statusEffects.push({
         name: '防禦姿態',
         duration: 1,
-        effect: 'DR% +15',
+        effect: 'SkillDR% +15',
       });
+      applyEquipmentSideEffects(player, 'onDefend', result);
       break;
     }
 
@@ -576,6 +735,24 @@ export function advanceCombat(state: GameState): CombatTurnResult[] {
 
       // Needs player input
       combat.waitingForPlayer = currentTurn.playerIndex!;
+      
+      // We can apply 'onTurnStart' side effects here for players
+      const dummyResult: CombatTurnResult = {
+        actorName: `${p.name}(${p.className})`,
+        actorIsPlayer: true,
+        targetName: '自身',
+        action: '回合開始', // A dummy action
+        diceResults: [],
+        damageDealt: 0, hpChange: 0, spChange: 0, desChange: 0,
+        upperChange: 0, lowerChange: 0, controlApplied: false, controlDuration: 0,
+        narrative: ''
+      };
+      applyEquipmentSideEffects(p, 'onTurnStart', dummyResult);
+      if (dummyResult.diceResults.length > 0) {
+        // Only push to combat queue if side effects actually triggered
+        results.push(dummyResult);
+      }
+      
       break; // Pause engine for player input
 
     } else {
@@ -636,6 +813,30 @@ export function processEndOfRound(
 ): void {
   // Process player status effects
   for (const player of players) {
+    if (player.isAlive && !player.isBD) {
+      // End of round triggers
+      const dummyResult: CombatTurnResult = {
+        actorName: `${player.name}(${player.className})`,
+        actorIsPlayer: true,
+        targetName: '自身',
+        action: '回合結束結算',
+        diceResults: [],
+        damageDealt: 0, hpChange: 0, spChange: 0, desChange: 0,
+        upperChange: 0, lowerChange: 0, controlApplied: false, controlDuration: 0,
+        narrative: ''
+      };
+      applyEquipmentSideEffects(player, 'onTurnEnd', dummyResult);
+      if (dummyResult.diceResults.length > 0) {
+        combat.pendingResults.push(dummyResult);
+        
+        // BD check in case side effect instantly kills/BDs player
+        if (player.hp <= 0 || player.des >= 100) {
+          player.isBD = true;
+          player.isAlive = player.hp > 0;
+        }
+      }
+    }
+
     // Decrement control immunity
     if (player.controlImmunity) {
       player.controlImmunityTurns--;
@@ -656,10 +857,49 @@ export function processEndOfRound(
       }
     }
 
+    // Process DOT (damage-over-time) effects
+    for (const se of player.statusEffects) {
+      if (se.type === 'dot' && se.targetStat === 'hp' && se.amount) {
+        player.hp = Math.max(0, player.hp + se.amount); // amount is negative
+        const dotResult: CombatTurnResult = {
+          actorName: `${player.name}(${player.className})`,
+          actorIsPlayer: true,
+          targetName: '自身',
+          action: `${se.name} 持續傷害`,
+          diceResults: [{
+            purpose: '持續傷害',
+            threshold: 0, roll: 0, success: true,
+            effects: `${se.name}: HP ${se.amount}`
+          }],
+          damageDealt: Math.abs(se.amount),
+          hpChange: se.amount, spChange: 0, desChange: 0,
+          upperChange: 0, lowerChange: 0,
+          controlApplied: false, controlDuration: 0,
+          narrative: ''
+        };
+        combat.pendingResults.push(dotResult);
+
+        // BD check after DOT
+        if (player.hp <= 0 || player.des >= 100) {
+          player.isBD = true;
+          player.isAlive = player.hp > 0;
+        }
+      }
+    }
+
     // Decrement status effects
     player.statusEffects = player.statusEffects.filter((se) => {
       se.duration--;
-      return se.duration > 0;
+      if (se.duration <= 0) {
+        // Revert stat mod
+        if (se.type === 'statMod' && se.targetStat && se.amount) {
+          if (se.targetStat === 'agi') player.agi = Math.max(0, player.agi - se.amount);
+          if (se.targetStat === 'wil') player.wil = Math.max(0, player.wil - se.amount);
+          if (se.targetStat === 'str') player.str = Math.max(0, player.str - se.amount);
+        }
+        return false;
+      }
+      return true;
     });
 
     // Decrement skill cooldowns
@@ -677,6 +917,13 @@ export function processEndOfRound(
       if (enemy.controlTurns <= 0) {
         enemy.isControlled = false;
         enemy.controlSource = undefined;
+      }
+    }
+
+    // Decrement monster skill cooldowns
+    for (const skill of enemy.skills) {
+      if (skill.currentCooldown && skill.currentCooldown > 0) {
+        skill.currentCooldown--;
       }
     }
   }

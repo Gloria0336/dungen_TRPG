@@ -520,6 +520,8 @@ export default function App() {
 
                   <div className="mt-1 text-sm text-dim">
                     STR:{p.str} AGI:{p.agi} WIL:{p.wil} DR:{p.drPercent}%
+                    {p.ampPercent > 0 && ` 增傷:+${p.ampPercent}%`}
+                    {p.flatDr > 0 && ` 減傷:-${p.flatDr}`}
                   </div>
                   <div className="text-sm text-dim">
                     上衣:{p.upperDurability}/100 下衣:{p.lowerDurability}/100
@@ -530,6 +532,16 @@ export default function App() {
                     <div style={{ paddingLeft: '0.5rem' }}>上裝：{p.equippedUpper?.name || '無'}</div>
                     <div style={{ paddingLeft: '0.5rem' }}>下裝：{p.equippedLower?.name || '無'}</div>
                   </div>
+                  {p.statusEffects.length > 0 && (
+                    <div className="text-sm" style={{ marginTop: '0.3rem' }}>
+                      <div style={{ color: 'var(--text-secondary)' }}>狀態效果：</div>
+                      {p.statusEffects.map((se, si) => (
+                        <div key={si} style={{ paddingLeft: '0.5rem', color: se.amount && se.amount < 0 ? 'var(--des-color)' : 'var(--sp-color)' }}>
+                          {se.name} ({se.effect}) - {se.duration}回合
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
 

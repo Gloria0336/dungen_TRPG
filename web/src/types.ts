@@ -58,6 +58,22 @@ export interface MonsterSkill {
   hitRule: string;
   effectSummary: string;
   baseHit?: number; // parsed from hitRule
+  cooldown: number;
+  currentCooldown?: number;
+
+  // --- Explicit Numerical Values ---
+  damageMultiplier?: number; // 傷害倍率，預設 1.0
+  controlTurns?: number;     // 控制持續回合數，預設 1
+  desImpactAmount?: number;  // 精確的 DES 變動量，如果未提供則 fallback 到舊機制
+  spDrainAmount?: number;    // 精確的 SP 變動量，如果未提供則 fallback 到舊機制
+  durabilityDamage?: number; // 裝備耐久度扣減基礎值
+
+  specialEffects?: {
+    type: 'statMod' | 'dot' | 'buff';
+    targetStat?: 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp';
+    amount: number;
+    duration: number;
+  }[];
 }
 
 // --- Class Definition (DB) ---
@@ -152,6 +168,13 @@ export interface EventDef {
   stateChanges: string[];
 }
 
+export interface EquipSideEffect {
+  trigger: 'onAttack' | 'onSkill' | 'onDefend' | 'onTurnEnd' | 'onTurnStart';
+  effectType: 'hp' | 'sp' | 'des' | 'agi' | 'str' | 'wil';
+  amount: number; // e.g. -5, +10
+  description: string;
+}
+
 // --- Equipment Definition (DB) ---
 
 export interface EquipmentDef {
@@ -159,8 +182,11 @@ export interface EquipmentDef {
   templateName: string;
   itemType: ItemType;
   atk?: number;
+  ampPercent?: number; // % damage multiplier (e.g., 10 for +10%)
+  flatDr?: number; // Flat damage reduction
   drU: number;
   drL: number;
+  sideEffects?: EquipSideEffect[];
   durabilityMax: number;
   tierSteps: {
     '100_80': number;
@@ -252,8 +278,11 @@ export interface InventoryItem {
   durability?: number;
   durabilityMax?: number;
   atk?: number;
+  ampPercent?: number;
+  flatDr?: number;
   drU?: number;
   drL?: number;
+  sideEffects?: EquipSideEffect[];
   tierSteps?: {
     '100_80': number;
     '79_60': number;
@@ -274,7 +303,10 @@ export interface PlayerState {
   str: number;
   agi: number;
   wil: number;
-  drPercent: number;
+  drPercent: number; // calculated from drU + drL + tierSteps
+  skillDrPercent: number; // DR from skills/status (multiplicative)
+  flatDr: number; // Flat damage reduction
+  ampPercent: number; // % damage multiplier
   drU: number;
   drL: number;
   upperDurability: number;
@@ -306,6 +338,10 @@ export interface StatusEffect {
   name: string;
   duration: number;
   effect: string;
+  // --- For explicit stat mods ---
+  type?: 'statMod' | 'dot' | 'buff';
+  targetStat?: 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp';
+  amount?: number;
 }
 
 export interface EnemyState {
@@ -317,6 +353,10 @@ export interface EnemyState {
   hp: number;
   maxHp: number;
   atk: number;
+  drPercent: number;
+  skillDrPercent: number;
+  flatDr: number;
+  ampPercent: number;
   hit: number;
   evade: number;
   isControlled: boolean;

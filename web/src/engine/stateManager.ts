@@ -57,6 +57,9 @@ export function initializePlayer(classId: string, name: string, index: number): 
     agi: cls.autoStats.AGI,
     wil: cls.autoStats.WIL,
     drPercent: 0,
+    skillDrPercent: 0,
+    flatDr: 0,
+    ampPercent: 0,
     drU: cls.durabilityDRProfile.drU,
     drL: cls.durabilityDRProfile.drL,
     upperDurability: 100,
@@ -78,7 +81,26 @@ export function initializePlayer(classId: string, name: string, index: number): 
   };
 
   player.drPercent = calculateDR(player);
+  recalculatePlayerStats(player);
   return player;
+}
+
+export function recalculatePlayerStats(player: PlayerState): void {
+  // Reset flat bonuses
+  player.flatDr = 0;
+  player.ampPercent = 0;
+
+  // Sum up from equipment
+  const equips = [player.equippedWeapon, player.equippedUpper, player.equippedLower];
+  for (const eq of equips) {
+    if (eq) {
+      if (eq.flatDr) player.flatDr += eq.flatDr;
+      if (eq.ampPercent) player.ampPercent += eq.ampPercent;
+    }
+  }
+
+  // Update DR based on durabilities and equips
+  player.drPercent = calculateDR(player);
 }
 
 export function saveGame(state: GameState): void {

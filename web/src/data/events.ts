@@ -21,13 +21,13 @@ export const EVENT_DB: Record<string, EventDef> = {
         label: '迅速後撤（敏捷檢定）',
         requiredCheck: 'AGI檢定 (1D100 <= 50 + AGI*5 + 10)',
         successEffects: 'Upper/Lower耐久 -0；Phase->REST',
-        failEffects: 'Upper耐久 -10；HP -8；Phase->REST',
+        failEffects: 'Upper耐久 -15；HP -10；Phase->REST',
       },
       {
         id: 'OP-TRAP-001-B',
         label: '硬扛通過',
         requiredCheck: '無',
-        successEffects: 'HP -3；Upper耐久 -5；Phase->REST',
+        successEffects: 'HP -5；Upper耐久 -10；Phase->REST',
         failEffects: '無',
       },
     ],
@@ -124,10 +124,10 @@ export const EVENT_DB: Record<string, EventDef> = {
       },
       {
         id: 'OP-TRADE-001-B',
-        label: '揮灑暴力摧毀祭壇（STR檢定）',
+        label: '暴力摧毀祭壇（STR檢定）',
         requiredCheck: 'STR檢定 (1D100 <= 40 + STR*5)',
         successEffects: '獲得 貴重戰利品 x1；Phase->REST',
-        failEffects: '遭到詛咒 HP -15；DES +10；Phase->REST'
+        failEffects: '遭到詛咒 HP -15；DES +20；Phase->REST'
       },
       {
         id: 'OP-TRADE-001-C',
@@ -167,7 +167,7 @@ export const EVENT_DB: Record<string, EventDef> = {
         label: '粗暴地直接砸開（STR檢定）',
         requiredCheck: 'STR檢定 (1D100 <= 40 + STR*5)',
         successEffects: '觸發陷阱但強行拿走物品：HP -5；獲得 貴重戰利品 x1；Phase->REST',
-        failEffects: '被捕獸夾夾傷並噴灑媚藥：HP -15；DES +20；Phase->REST'
+        failEffects: '被觸手捕獲噴灑媚藥：HP -15；DES +30；Phase->REST'
       },
       {
         id: 'OP-CHEST-001-C',
@@ -232,7 +232,7 @@ export const EVENT_DB: Record<string, EventDef> = {
         id: 'OP-SPRING-001-A',
         label: '脫衣全身浸泡（無檢定）',
         requiredCheck: '無',
-        successEffects: '全狀態恢復；HP +50；DES +25；Phase->REST',
+        successEffects: '全狀態恢復；HP +50；DES +30；Phase->REST',
         failEffects: '無'
       },
       {
