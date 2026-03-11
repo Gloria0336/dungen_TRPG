@@ -97,7 +97,8 @@ export function buildSceneSummary(
   combatResults?: CombatTurnResult[],
   extraContext?: string
 ): string {
-  let summary = '';
+  let summary = '【敘事要求】請以沉浸式小說筆法描述下方場景與事件。絕對不可輸出任何系統數值、屬性或判定結果。\n';
+  summary += '【嚴格限制】絕對不可在故事中描寫角色去使用、食用或掏出不存在於下方[背包]清單中的任何道具、藥水或物資！必須百分之百忠於當前持有的實際物品紀錄。純敘事文字。\n\n';
 
   // Basic scene info
   summary += `[場景] 第${state.floor}層/${state.maxFloor} ${state.phase}階段\n`;
@@ -162,8 +163,6 @@ export function buildSceneSummary(
 
   if (extraContext) summary += `[額外] ${extraContext}\n`;
 
-  summary += '\n【嚴格限制】：請以沉浸式敘事描述上述場景（不輸出數值與判定結果）。此外，你**絕對不可**在故事中描寫角色去使用、食用或掏出不存在於上方[背包]清單中的任何道具、藥水或物資，敘事必須百分之百忠於他們當前持有的實際物品與裝備紀錄。純敘事文字。';
-
   return summary;
 }
 
@@ -178,29 +177,24 @@ export async function* requestNarrative(
   const systemPrompt = buildSystemPrompt(state);
   const sceneSummary = buildSceneSummary(state, combatResults, extraContext);
 
-  // Build messages with sliding window
-  const messages: ChatMessage[] = [
-    { role: 'system', content: systemPrompt },
-  ];
-
   // Add compressed narrative history (sliding window)
   const recentHistory = state.narrativeHistory.slice(-MAX_HISTORY);
+  let userContent = '';
+
   if (recentHistory.length > 0) {
     const historyText = recentHistory
       .map((h) => `[第${h.floor}層 ${h.phase}] ${h.summary}`)
       .join('\n');
-    messages.push({
-      role: 'user',
-      content: `【前情提要】\n${historyText}\n\n---\n以上是前情提要，請據此維持敘事連貫性。`,
-    });
-    messages.push({
-      role: 'assistant',
-      content: '（已理解前情，將據此繼續敘事。）',
-    });
+    userContent += `【前情提要】\n${historyText}\n\n---\n（請延續上述前情的氛圍，並根據下列最新場景進行後續敘事）\n\n`;
   }
 
-  // Current scene
-  messages.push({ role: 'user', content: sceneSummary });
+  userContent += `【最新場景與狀態】\n${sceneSummary}`;
+
+  // Build messages
+  const messages: ChatMessage[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userContent }
+  ];
 
   // Stream response
   yield* streamCompletion(apiKey, modelId, messages);
