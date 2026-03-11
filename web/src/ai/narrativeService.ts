@@ -124,6 +124,16 @@ export function buildSceneSummary(
     }
   }
 
+  // Current Event
+  if (state.phase === 'EVENT' && state.currentEvent) {
+    summary += `[當前事件] ${state.currentEvent.templateName}\n`;
+    const eventDesc = state.nsgEnabled && state.currentEvent.jailbreakDescription
+      ? state.currentEvent.jailbreakDescription.join(' ')
+      : state.currentEvent.descriptionStub.join(' ');
+    summary += `事件描述: ${eventDesc}\n`;
+    summary += `選項: ${state.currentEvent.options.map(o => o.label).join('、')}\n`;
+  }
+
   // Combat results
   if (combatResults && combatResults.length > 0) {
     summary += '[本回合事件]\n';
