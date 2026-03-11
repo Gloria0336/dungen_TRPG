@@ -155,6 +155,10 @@ html, body, #root {
 .stat-bar.hp.low { background: var(--hp-low); }
 .stat-bar.sp { background: var(--sp-color); }
 .stat-bar.des { background: var(--des-color); }
+.stat-bar.des.des-low { background: #22c55e; }
+.stat-bar.des.des-mid { background: #eab308; }
+.stat-bar.des.des-high { background: #f97316; }
+.stat-bar.des.des-critical { background: #ef4444; }
 .stat-value {
   font-size: 0.7rem; color: var(--text-secondary); width: 65px;
   text-align: right; font-family: var(--font-mono);

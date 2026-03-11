@@ -507,7 +507,11 @@ export default function App() {
                     <span>{p.name}</span>
                     <span className="player-class">{p.className}</span>
                   </div>
-                  {p.isControlled && <span className="badge danger">被控制</span>}
+                  {p.isControlled && (
+                    <span className="badge danger">
+                      被控制 ({p.controlSource ? `${p.controlSource} ` : ''}剩餘 {p.controlTurns} 回合)
+                    </span>
+                  )}
                   {p.isBD && <span className="badge danger">BD</span>}
 
                   <StatBar label="HP" value={p.hp} max={p.maxHp} type="hp" />
@@ -519,6 +523,12 @@ export default function App() {
                   </div>
                   <div className="text-sm text-dim">
                     上衣:{p.upperDurability}/100 下衣:{p.lowerDurability}/100
+                  </div>
+                  <div className="text-sm text-dim" style={{ marginTop: '0.3rem' }}>
+                    <div style={{ color: 'var(--text-secondary)' }}>裝備：</div>
+                    <div style={{ paddingLeft: '0.5rem' }}>武器：{p.equippedWeapon?.name || '無'}</div>
+                    <div style={{ paddingLeft: '0.5rem' }}>上裝：{p.equippedUpper?.name || '無'}</div>
+                    <div style={{ paddingLeft: '0.5rem' }}>下裝：{p.equippedLower?.name || '無'}</div>
                   </div>
                 </div>
               ))}
@@ -842,7 +852,10 @@ export default function App() {
                   <div className="panel-title">敵人</div>
                   {aliveEnemies.map(e => (
                     <div key={e.instanceId} className="enemy-item">
-                      <span className="enemy-name">{e.templateName}</span>
+                      <span className="enemy-name">
+                        {e.templateName}
+                        {e.isControlled && <span className="badge danger" style={{ marginLeft: '0.4rem' }}>被控制 ({e.controlSource ? `${e.controlSource} ` : ''}剩餘 {e.controlTurns} 回合)</span>}
+                      </span>
                       <div className="enemy-hp-bar">
                         <div className="enemy-hp-fill" style={{ width: `${(e.hp / e.maxHp) * 100}%` }} />
                       </div>
@@ -883,6 +896,12 @@ function StatBar({ label, value, max, type }: { label: string; value: number; ma
   const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
   let cls = type;
   if (type === 'hp') { if (pct < 25) cls += ' low'; else if (pct < 50) cls += ' mid'; }
+  if (type === 'des') {
+    if (value <= 20) cls += ' des-low';
+    else if (value <= 50) cls += ' des-mid';
+    else if (value <= 80) cls += ' des-high';
+    else cls += ' des-critical';
+  }
   return (
     <div className="stat-row">
       <span className="stat-label">{label}</span>

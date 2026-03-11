@@ -279,6 +279,7 @@ export function processEnemyAttack(
       result.controlDuration = 1;
       player.isControlled = true;
       player.controlTurns = 1;
+      player.controlSource = `${enemy.templateName}的[${skill.name}]`;
     }
 
     // Check BD condition (HP or DES reaches 0/max)
@@ -421,6 +422,7 @@ export function processPlayerAction(
             if (controlResult.success) {
               target.isControlled = true;
               target.controlTurns = 1;
+              target.controlSource = `${player.name}的[${skill.name}]`;
               target.controlResistCount++;
               result.controlApplied = true;
               result.controlDuration = 1;
@@ -642,6 +644,18 @@ export function processEndOfRound(
       }
     }
 
+    // Decrement control turns
+    if (player.isControlled) {
+      player.controlTurns--;
+      if (player.controlTurns <= 0) {
+        player.isControlled = false;
+        player.controlSource = undefined;
+        // Give 1 turn immunity after recovering
+        player.controlImmunity = true;
+        player.controlImmunityTurns = 1;
+      }
+    }
+
     // Decrement status effects
     player.statusEffects = player.statusEffects.filter((se) => {
       se.duration--;
@@ -662,6 +676,7 @@ export function processEndOfRound(
       enemy.controlTurns--;
       if (enemy.controlTurns <= 0) {
         enemy.isControlled = false;
+        enemy.controlSource = undefined;
       }
     }
   }

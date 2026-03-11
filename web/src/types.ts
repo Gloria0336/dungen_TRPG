@@ -281,6 +281,7 @@ export interface PlayerState {
   lowerDurability: number;
   isControlled: boolean;
   controlTurns: number;
+  controlSource?: string;
   controlImmunity: boolean;
   controlImmunityTurns: number;
   statusEffects: StatusEffect[];
@@ -320,6 +321,7 @@ export interface EnemyState {
   evade: number;
   isControlled: boolean;
   controlTurns: number;
+  controlSource?: string;
   statusEffects: StatusEffect[];
   skills: MonsterSkill[];
   behaviorRules: string[];
