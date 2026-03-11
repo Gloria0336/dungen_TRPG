@@ -216,10 +216,11 @@ export async function* requestNarrative(
     const historyText = recentHistory
       .map((h) => `[第${h.floor}層 ${h.phase}] ${h.summary}`)
       .join('\n');
-    userContent += `【前情提要】\n${historyText}\n\n---\n（請延續上述前情的氛圍，並根據下列最新場景進行後續敘事）\n\n`;
+    userContent += `### 歷史背景 (僅供參考)\n${historyText}\n\n`;
   }
 
-  userContent += `【最新場景與狀態】\n${sceneSummary}`;
+  userContent += `### 最新數值與事件數據\n${sceneSummary}\n\n`;
+  userContent += `### 執行指令\n請忽略上述所有 ### 標題，直接輸出針對上述「最新數值與事件」的沉浸式故事敘事。禁止輸出任何前言或重複數據標籤。`;
 
   // Build messages
   const messages: ChatMessage[] = [
