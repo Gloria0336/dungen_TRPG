@@ -155,12 +155,14 @@ export function buildSceneSummary(
   summary += `[背包] 金幣:${state.gold}`;
   if (state.inventory.length > 0) {
     summary += ` 物品:${state.inventory.map(i => `${i.name}x${i.quantity}`).join('、')}`;
+  } else {
+    summary += ` 物品:無`;
   }
   summary += '\n';
 
   if (extraContext) summary += `[額外] ${extraContext}\n`;
 
-  summary += '\n請以沉浸式敘事描述上述場景，不要輸出任何數值或判定結果，純敘事文字。';
+  summary += '\n【嚴格限制】：請以沉浸式敘事描述上述場景（不輸出數值與判定結果）。此外，你**絕對不可**在故事中描寫角色去使用、食用或掏出不存在於上方[背包]清單中的任何道具、藥水或物資，敘事必須百分之百忠於他們當前持有的實際物品與裝備紀錄。純敘事文字。';
 
   return summary;
 }

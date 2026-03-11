@@ -486,14 +486,16 @@ export default function App() {
                 </div>
               ))}
 
-              {state.inventory.length > 0 && (
-                <div className="panel-card">
-                  <div className="panel-title">背包</div>
-                  {state.inventory.map(item => (
+              <div className="panel-card">
+                <div className="panel-title">背包</div>
+                {state.inventory.length > 0 ? (
+                  state.inventory.map(item => (
                     <div key={item.id} className="text-sm">{item.name} x{item.quantity}</div>
-                  ))}
-                </div>
-              )}
+                  ))
+                ) : (
+                  <div className="text-sm text-dim">背包是空的</div>
+                )}
+              </div>
             </div>
           </div>
         )}
