@@ -43,8 +43,8 @@ export async function* streamCompletion(
       model: modelId,
       messages,
       stream: true,
-      temperature: 0.85,
-      max_tokens: 2000,
+      temperature: 0.7,
+      max_tokens: 1200,
     }),
   });
 
