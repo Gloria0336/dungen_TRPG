@@ -9,7 +9,7 @@ const API_BASE = 'https://openrouter.ai/api/v1';
 export const RECOMMENDED_MODELS: ModelInfo[] = [
   { id: 'anthropic/claude-sonnet-4', name: 'Claude Sonnet 4', contextLength: 200000 },
   { id: 'google/gemini-2.5-pro-preview', name: 'Gemini 2.5 Pro', contextLength: 1048576 },
-  { id: 'google/gemini-2.5-flash-preview', name: 'Gemini 2.5 Flash', contextLength: 1048576 },
+  { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', contextLength: 1048576 },
   { id: 'anthropic/claude-3.5-haiku', name: 'Claude 3.5 Haiku', contextLength: 200000 },
   { id: 'openai/gpt-4o', name: 'GPT-4o', contextLength: 128000 },
   { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', contextLength: 128000 },

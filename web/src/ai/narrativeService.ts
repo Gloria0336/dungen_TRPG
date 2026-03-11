@@ -39,7 +39,56 @@ export function buildSystemPrompt(state: GameState): string {
     }
   }
 
+  // Add phase and DES context matrix
+  if (state.players && state.players.length === 2) {
+    const totalDes = state.players[0].des + state.players[1].des;
+    context += '\n【動態敘事矩陣】\n';
+    context += `- ${getPhaseFocusPrompt(state)}\n`;
+    context += `- ${getDesTierPrompt(totalDes, state.nsgEnabled)}\n`;
+  }
+
   return context;
+}
+
+function getPhaseFocusPrompt(state: GameState): string {
+  if (state.phase === 'COMBAT') {
+    const isBoss = state.enemies.some(e => e.tier === 'A');
+    if (isBoss) {
+      return '【階段敘事焦點：Boss戰鬥】放大強敵帶來的絕望感、體型差距、威壓，以及生死交關的壓迫感。';
+    }
+  }
+
+  switch (state.phase) {
+    case 'INIT': return '【階段敘事焦點：開局】描述剛踏入新環境時的冰冷感、未知的氣味，以及兩人的初次互動與姿態。';
+    case 'EXPLORE': return '【階段敘事焦點：探索】描述他們推進地圖的過程，腳下的觸感、走廊的壓迫感以及四周的微小動靜。';
+    case 'EVENT': return '【階段敘事焦點：事件】描述觸發機關、打開寶箱或遭遇突發狀況時的瞬間反應與後果。';
+    case 'COMBAT': return '【階段敘事焦點：一般戰鬥】快速的交鋒與體感。描述他們如何應對敵人的攻擊，以及自身的動作發力點。';
+    case 'REST': return '【階段敘事焦點：休息】描述兩人在營火或安全區的喘息時間，包紮傷口、整理碎裂防具或低語交流。';
+    case 'SHOP': return '【階段敘事焦點：商人】遭遇地牢中的神秘商人，進行交易或討價還價的互動與心理博弈。';
+    case 'SPECIAL': return '【階段敘事焦點：特殊局】強調環境機制的壓迫感，如時間流逝、迫近的異象或特殊的劇本氛圍。';
+    case 'END': return '【階段敘事焦點：終局】收束整場遊戲的命運，展示無可挽回的結果與終局畫面。';
+    case 'CUSTOM': default: return '【階段敘事焦點：自訂】靈活應對未定劇本。以當下情境為主進行合理延伸。';
+  }
+}
+
+function getDesTierPrompt(totalDes: number, nsgEnabled: boolean): string {
+  if (!nsgEnabled) {
+    if (totalDes <= 50) return '【狀態輔助：理智期】請強調角色的警戒心與戰鬥技巧，專注於推進地下城。';
+    if (totalDes <= 100) return '【狀態輔助：動搖期】請加入疲勞感與壓迫感。角色的理智開始動搖，環境讓他們感到極大的心理壓力。';
+    if (totalDes <= 150) return '【狀態輔助：崩潰邊緣】請放大角色內心的恐懼與絕望感。極限狀態下他們的意志瀕臨崩潰。';
+    return '【狀態輔助：徹底絕望】請以極度沉重的史詩悲劇感為主，角色徹底被強敵與絕望吞噬，生存意志微弱。';
+  }
+
+  if (totalDes <= 50) {
+    return '【狀態輔助：理智期】請強調角色的警戒心、戰鬥技巧與對環境的敏銳度。保持理智與專業，對誘惑或輕微觸碰心生警惕不為所動。';
+  }
+  if (totalDes <= 100) {
+    return '【狀態輔助：動搖期】請加入疲勞感與微弱的情慾錯覺。理智開始鬆動，皮膚摩擦或敵人的氣味讓他們感到不自然的燥熱與分心，對痛楚的反應開始帶有些微麻癢。';
+  }
+  if (totalDes <= 150) {
+    return '【狀態輔助：沉淪邊緣】請放大角色內心的矛盾與羞恥感。肉體開始背叛大腦，一舉一動帶著色氣的喘息，努力壓抑理智卻無法控制地對敵人的觸碰產生依賴與屈服感。';
+  }
+  return '【狀態輔助：完全墮落】請以極致的感官描寫為主，角色已徹底被慾望與本能吞噬。不再在乎生存，所有的行為、攻擊與事件都被視為帶來快感與凌辱的恩賜，充滿露骨與渴求的墮落氣息。';
 }
 
 /** Build scene summary from game state and combat results */
