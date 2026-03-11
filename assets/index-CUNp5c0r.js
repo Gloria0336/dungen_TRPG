@@ -85,7 +85,10 @@ ${sy}
 【動態敘事矩陣】
 `,r+=`- ${Ox(l)}
 `,r+=`- ${wx(u,l.nsgEnabled)}
-`}return r}function Ox(l){if(l.phase==="COMBAT"&&l.enemies.some(r=>r.tier==="A"))return"【階段敘事焦點：Boss戰鬥】放大強敵帶來的絕望感、體型差距、威壓，以及生死交關的壓迫感。";switch(l.phase){case"INIT":return"【階段敘事焦點：開局】描述剛踏入新環境時的冰冷感、未知的氣味，以及兩人的初次互動與姿態。";case"EXPLORE":return"【階段敘事焦點：探索】描述他們推進地圖的過程，腳下的觸感、走廊的壓迫感以及四周的微小動靜。";case"EVENT":return"【階段敘事焦點：事件】描述觸發機關、打開寶箱或遭遇突發狀況時的瞬間反應與後果。";case"COMBAT":return"【階段敘事焦點：一般戰鬥】快速的交鋒與體感。描述他們如何應對敵人的攻擊，以及自身的動作發力點。";case"REST":return"【階段敘事焦點：休息】描述兩人在安全區或營火旁的短暫停留與喘息時間，檢視自身狀態、整理裝備，或針對剛才發生的狀況進行低語交流。";case"SHOP":return"【階段敘事焦點：商人】遭遇地牢中的神秘商人，進行交易或討價還價的互動與心理博弈。";case"SPECIAL":return"【階段敘事焦點：特殊局】強調環境機制的壓迫感，如時間流逝、迫近的異象或特殊的劇本氛圍。";case"END":return"【階段敘事焦點：終局】收束整場遊戲的命運，展示無可挽回的結果與終局畫面。";default:return"【階段敘事焦點：自訂】靈活應對未定劇本。以當下情境為主進行合理延伸。"}}function wx(l,i){return i?l<=50?"【狀態輔助：理智期】請強調角色的警戒心、戰鬥技巧與對環境的敏銳度。保持理智與專業，對誘惑或輕微觸碰心生警惕不為所動。":l<=100?"【狀態輔助：動搖期】請加入疲勞感與微弱的情慾錯覺。理智開始鬆動，皮膚摩擦或敵人的氣味讓他們感到不自然的燥熱與分心，對痛楚的反應開始帶有些微麻癢。":l<=150?"【狀態輔助：沉淪邊緣】請放大角色內心的矛盾與羞恥感。肉體開始背叛大腦，一舉一動帶著色氣的喘息，努力壓抑理智卻無法控制地對敵人的觸碰產生依賴與屈服感。":"【狀態輔助：完全墮落】請以極致的感官描寫為主，角色已徹底被慾望與本能吞噬。不再在乎生存，所有的行為、攻擊與事件都被視為帶來快感與凌辱的恩賜，充滿露骨與渴求的墮落氣息。":l<=50?"【狀態輔助：理智期】請強調角色的警戒心與戰鬥技巧，專注於推進地下城。":l<=100?"【狀態輔助：動搖期】請加入疲勞感與壓迫感。角色的理智開始動搖，環境讓他們感到極大的心理壓力。":l<=150?"【狀態輔助：崩潰邊緣】請放大角色內心的恐懼與絕望感。極限狀態下他們的意志瀕臨崩潰。":"【狀態輔助：徹底絕望】請以極度沉重的史詩悲劇感為主，角色徹底被強敵與絕望吞噬，生存意志微弱。"}function Bx(l,i,r){let u="";if(u+=`[場景] 第${l.floor}層/${l.maxFloor} ${l.phase}階段
+`}return r}function Ox(l){if(l.phase==="COMBAT"&&l.enemies.some(r=>r.tier==="A"))return"【階段敘事焦點：Boss戰鬥】放大強敵帶來的絕望感、體型差距、威壓，以及生死交關的壓迫感。";switch(l.phase){case"INIT":return"【階段敘事焦點：開局】描述剛踏入新環境時的冰冷感、未知的氣味，以及兩人的初次互動與姿態。";case"EXPLORE":return"【階段敘事焦點：探索】描述他們推進地圖的過程，腳下的觸感、走廊的壓迫感以及四周的微小動靜。";case"EVENT":return"【階段敘事焦點：事件】描述觸發機關、打開寶箱或遭遇突發狀況時的瞬間反應與後果。";case"COMBAT":return"【階段敘事焦點：一般戰鬥】快速的交鋒與體感。描述他們如何應對敵人的攻擊，以及自身的動作發力點。";case"REST":return"【階段敘事焦點：休息】描述兩人在安全區或營火旁的短暫停留與喘息時間，檢視自身狀態、整理裝備，或針對剛才發生的狀況進行低語交流。";case"SHOP":return"【階段敘事焦點：商人】遭遇地牢中的神秘商人，進行交易或討價還價的互動與心理博弈。";case"SPECIAL":return"【階段敘事焦點：特殊局】強調環境機制的壓迫感，如時間流逝、迫近的異象或特殊的劇本氛圍。";case"END":return"【階段敘事焦點：終局】收束整場遊戲的命運，展示無可挽回的結果與終局畫面。";default:return"【階段敘事焦點：自訂】靈活應對未定劇本。以當下情境為主進行合理延伸。"}}function wx(l,i){return i?l<=50?"【狀態輔助：理智期】請強調角色的警戒心、戰鬥技巧與對環境的敏銳度。保持理智與專業，對誘惑或輕微觸碰心生警惕不為所動。":l<=100?"【狀態輔助：動搖期】請加入疲勞感與微弱的情慾錯覺。理智開始鬆動，皮膚摩擦或敵人的氣味讓他們感到不自然的燥熱與分心，對痛楚的反應開始帶有些微麻癢。":l<=150?"【狀態輔助：沉淪邊緣】請放大角色內心的矛盾與羞恥感。肉體開始背叛大腦，一舉一動帶著色氣的喘息，努力壓抑理智卻無法控制地對敵人的觸碰產生依賴與屈服感。":"【狀態輔助：完全墮落】請以極致的感官描寫為主，角色已徹底被慾望與本能吞噬。不再在乎生存，所有的行為、攻擊與事件都被視為帶來快感與凌辱的恩賜，充滿露骨與渴求的墮落氣息。":l<=50?"【狀態輔助：理智期】請強調角色的警戒心與戰鬥技巧，專注於推進地下城。":l<=100?"【狀態輔助：動搖期】請加入疲勞感與壓迫感。角色的理智開始動搖，環境讓他們感到極大的心理壓力。":l<=150?"【狀態輔助：崩潰邊緣】請放大角色內心的恐懼與絕望感。極限狀態下他們的意志瀕臨崩潰。":"【狀態輔助：徹底絕望】請以極度沉重的史詩悲劇感為主，角色徹底被強敵與絕望吞噬，生存意志微弱。"}function Bx(l,i,r){let u=`【敘事要求】請以沉浸式小說筆法描述下方場景與事件。絕對不可輸出任何系統數值、屬性或判定結果。
+`;if(u+=`【嚴格限制】絕對不可在故事中描寫角色去使用、食用或掏出不存在於下方[背包]清單中的任何道具、藥水或物資！必須百分之百忠於當前持有的實際物品紀錄。純敘事文字。
+
+`,u+=`[場景] 第${l.floor}層/${l.maxFloor} ${l.phase}階段
 `,l.players)for(let s=0;s<2;s++){const f=l.players[s];u+=`[角色${s+1}] ${f.name}(${f.className}) HP:${f.hp}/${f.maxHp} SP:${f.sp}/${f.maxSp} DES:${f.des}`,f.isControlled&&(u+=" 【被控制中】"),f.isBD&&(u+=" 【BD狀態】"),u+=` 上衣耐久:${f.upperDurability} 下衣耐久:${f.lowerDurability} DR:${f.drPercent}%
 `}if(l.enemies.length>0)for(const s of l.enemies)s.isAlive&&(u+=`[敵人] ${s.templateName}(${s.tier}類) HP:${s.hp}/${s.maxHp}`,s.isControlled&&(u+=" 被控制"),u+=`
 `);if(l.phase==="EVENT"&&l.currentEvent){u+=`[當前事件] ${l.currentEvent.templateName}
@@ -95,13 +98,15 @@ ${sy}
 `;for(const s of i){if(u+=`- ${s.actorName} 使用「${s.action}」→ `,s.diceResults.length>0){const f=s.diceResults[0];u+=`1D100=${f.roll}, ${f.success?"命中":"未命中"}(門檻${f.threshold}%) `}s.damageDealt>0&&(u+=`→ 造成${s.damageDealt}點傷害 `),s.controlApplied&&(u+=`→ 施加控制${s.controlDuration}回合 `),s.upperChange&&(u+=`上衣耐久${s.upperChange} `),s.lowerChange&&(u+=`下衣耐久${s.lowerChange} `),u+=`
 `}}return u+=`[背包] 金幣:${l.gold}`,l.inventory.length>0?u+=` 物品:${l.inventory.map(s=>`${s.name}x${s.quantity}`).join("、")}`:u+=" 物品:無",u+=`
 `,r&&(u+=`[額外] ${r}
-`),u+=`
-【嚴格限制】：請以沉浸式敘事描述上述場景（不輸出數值與判定結果）。此外，你**絕對不可**在故事中描寫角色去使用、食用或掏出不存在於上方[背包]清單中的任何道具、藥水或物資，敘事必須百分之百忠於他們當前持有的實際物品與裝備紀錄。純敘事文字。`,u}async function*jx(l,i,r,u,s){const f=_x(r),h=Bx(r,u,s),m=[{role:"system",content:f}],y=r.narrativeHistory.slice(-eo);if(y.length>0){const p=y.map(g=>`[第${g.floor}層 ${g.phase}] ${g.summary}`).join(`
-`);m.push({role:"user",content:`【前情提要】
-${p}
+`),u}async function*jx(l,i,r,u,s){const f=_x(r),h=Bx(r,u,s),m=r.narrativeHistory.slice(-eo);let y="";if(m.length>0){const g=m.map(b=>`[第${b.floor}層 ${b.phase}] ${b.summary}`).join(`
+`);y+=`【前情提要】
+${g}
 
 ---
-以上是前情提要，請據此維持敘事連貫性。`}),m.push({role:"assistant",content:"（已理解前情，將據此繼續敘事。）"})}m.push({role:"user",content:h}),yield*fy(l,i,m)}function Lx(l){const i=l.replace(/\n/g," ").trim();return i.length<=Sp?i:i.slice(0,Sp)+"..."}function bp(l,i){l.narrativeHistory.push({timestamp:Date.now(),phase:l.phase,floor:l.floor,summary:Lx(i),fullText:i}),l.narrativeHistory.length>eo*2&&(l.narrativeHistory=l.narrativeHistory.slice(-eo))}async function*Hx(l,i,r,u,s,f,h){const m=h?cy:oy,y=`
+（請延續上述前情的氛圍，並根據下列最新場景進行後續敘事）
+
+`}y+=`【最新場景與狀態】
+${h}`,yield*fy(l,i,[{role:"system",content:f},{role:"user",content:y}])}function Lx(l){const i=l.replace(/\n/g," ").trim();return i.length<=Sp?i:i.slice(0,Sp)+"..."}function bp(l,i){l.narrativeHistory.push({timestamp:Date.now(),phase:l.phase,floor:l.floor,summary:Lx(i),fullText:i}),l.narrativeHistory.length>eo*2&&(l.narrativeHistory=l.narrativeHistory.slice(-eo))}async function*Hx(l,i,r,u,s,f,h){const m=h?cy:oy,y=`
 ${m}
 
 【任務說明】
