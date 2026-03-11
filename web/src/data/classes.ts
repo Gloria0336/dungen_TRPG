@@ -44,6 +44,7 @@ export const CLASS_DB: Record<string, ClassDef> = {
         cooldown: 2,
       },
     ],
+    initialEquipment: ['IT-WEP-PRST', 'IT-ARM-U-PRST', 'IT-ARM-L-PRST'],
     growthRule: {
       description: '每次戰鬥勝利後隨機提升 1～2 項',
       stats: {
@@ -112,6 +113,7 @@ export const CLASS_DB: Record<string, ClassDef> = {
         cooldown: 2,
       },
     ],
+    initialEquipment: ['IT-WEP-KNGT', 'IT-ARM-U-KNGT', 'IT-ARM-L-KNGT'],
     growthRule: {
       description: '每次戰鬥勝利後偏重力量與體力成長',
       stats: {
@@ -180,6 +182,7 @@ export const CLASS_DB: Record<string, ClassDef> = {
         cooldown: 3,
       },
     ],
+    initialEquipment: ['IT-WEP-MAGE', 'IT-ARM-U-MAGE', 'IT-ARM-L-MAGE'],
     growthRule: {
       description: '每次戰鬥勝利後偏重意志與法力成長',
       stats: {
@@ -248,6 +251,7 @@ export const CLASS_DB: Record<string, ClassDef> = {
         cooldown: 3,
       },
     ],
+    initialEquipment: ['IT-WEP-FIGHT', 'IT-ARM-U-FIGHT', 'IT-ARM-L-FIGHT'],
     growthRule: {
       description: '每次戰鬥勝利後偏重敏捷與力量成長',
       stats: {
@@ -316,6 +320,7 @@ export const CLASS_DB: Record<string, ClassDef> = {
         cooldown: 3,
       },
     ],
+    initialEquipment: ['IT-WEP-ASSN', 'IT-ARM-U-ASSN', 'IT-ARM-L-ASSN'],
     growthRule: {
       description: '每次戰鬥勝利後極端偏重敏捷成長',
       stats: {
@@ -385,6 +390,7 @@ export const CLASS_DB: Record<string, ClassDef> = {
         cooldown: 4,
       },
     ],
+    initialEquipment: ['IT-WEP-MSWD', 'IT-ARM-U-MSWD', 'IT-ARM-L-MSWD'],
     growthRule: {
       description: '每次戰鬥勝利後均衡成長',
       stats: {
@@ -454,6 +460,7 @@ export const CLASS_DB: Record<string, ClassDef> = {
         cooldown: 3,
       },
     ],
+    initialEquipment: ['IT-WEP-DIVA', 'IT-ARM-U-DIVA', 'IT-ARM-L-DIVA'],
     growthRule: {
       description: '每次戰鬥勝利後偏重意志成長',
       stats: {
@@ -523,6 +530,7 @@ export const CLASS_DB: Record<string, ClassDef> = {
         cooldown: 3,
       },
     ],
+    initialEquipment: ['IT-WEP-PIRT', 'IT-ARM-U-PIRT', 'IT-ARM-L-PIRT'],
     growthRule: {
       description: '每次戰鬥勝利後偏重力量與體力成長',
       stats: {

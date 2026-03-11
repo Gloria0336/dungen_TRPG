@@ -1,5 +1,6 @@
 import type { GameState, PlayerState } from '../types';
 import { CLASS_DB } from '../data/classes';
+import { EQUIPMENT_DB } from '../data/equipment';
 import { determineShopFloors } from './shopEngine';
 import { assignAbsoluteCounter } from './counterEngine';
 import { calculateDR } from './combatEngine';
@@ -80,9 +81,42 @@ export function initializePlayer(classId: string, name: string, index: number): 
     equippedLower: null,
   };
 
+  // Add initial equipment if defined
+  if (cls.initialEquipment) {
+    for (const eqId of cls.initialEquipment) {
+      const def = EQUIPMENT_DB[eqId];
+      if (def) {
+        const item = createInventoryItemFromDef(def);
+        if (def.equipSlot === 'Weapon') player.equippedWeapon = item;
+        else if (def.equipSlot === 'Upper') player.equippedUpper = item;
+        else if (def.equipSlot === 'Lower') player.equippedLower = item;
+      }
+    }
+  }
+
   player.drPercent = calculateDR(player);
   recalculatePlayerStats(player);
   return player;
+}
+
+export function createInventoryItemFromDef(def: any): any {
+  return {
+    id: `INIT-${def.id}-${Math.random().toString(36).slice(2, 6)}`,
+    name: def.templateName,
+    type: def.itemType,
+    quantity: 1,
+    equipStatus: 'Equipped',
+    equipSlot: def.equipSlot,
+    durability: def.durabilityMax,
+    durabilityMax: def.durabilityMax,
+    atk: def.atk,
+    ampPercent: def.ampPercent,
+    flatDr: def.flatDr,
+    drU: def.drU,
+    drL: def.drL,
+    sideEffects: def.sideEffects,
+    tierSteps: def.tierSteps,
+  };
 }
 
 export function recalculatePlayerStats(player: PlayerState): void {

@@ -110,6 +110,7 @@ export interface ClassDef {
   baseDes: number;
   spWeightRule: SPWeightRule[];
   skillList: Skill[];
+  initialEquipment?: string[];
   growthRule: GrowthRule;
   newSkillRule: { chance: string; unlockList: string[] };
   durabilityDRProfile: DurabilityDRProfile;
