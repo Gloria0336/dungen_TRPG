@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type {
   GameState, GameConfig, CombatAction, CombatTurnResult,
-  GameLogEntry, ModelInfo, EventOption,
+  GameLogEntry, EventOption,
 } from './types';
 import { getAllClasses } from './data/classes';
 import {
@@ -19,7 +19,7 @@ import { generateGoldDrop, rollItemDrop, processGrowth } from './engine/lootEngi
 import { formatDiceResult } from './engine/diceEngine';
 import { requestNarrative, addNarrativeToHistory } from './ai/narrativeService';
 import { generateBiography, type BioInput } from './ai/biographyService';
-import { RECOMMENDED_MODELS, fetchAvailableModels } from './ai/openrouter';
+import { RECOMMENDED_MODELS, NSFW_MODELS } from './ai/openrouter';
 import { getRandomEvent } from './data/events';
 import './index.css';
 
@@ -41,13 +41,16 @@ function loadConfig(): GameConfig {
 function saveConfig(c: GameConfig) { localStorage.setItem(CONFIG_KEY, JSON.stringify(c)); }
 
 export default function App() {
-  const [screen, setScreen] = useState<'start' | 'game'>('start');
+  const [screen, setScreen] = useState<'start' | 'game'>(() => {
+    try { return hasSave() ? 'game' : 'start'; } catch { return 'start'; }
+  });
   const [config, setConfig] = useState<GameConfig>(loadConfig);
-  const [state, setState] = useState<GameState | null>(null);
+  const [state, setState] = useState<GameState | null>(() => {
+    try { return hasSave() ? loadGame() : null; } catch { return null; }
+  });
   const [showSettings, setShowSettings] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [narrativeText, setNarrativeText] = useState('');
-  const [models, setModels] = useState<ModelInfo[]>(RECOMMENDED_MODELS);
   const [classSelection, setClassSelection] = useState<[string, string]>(['', '']);
   const [playerNames, setPlayerNames] = useState<[string, string]>(['', '']);
   const [showPlayerPanel, setShowPlayerPanel] = useState(false);
@@ -63,7 +66,11 @@ export default function App() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [state?.log.length, narrativeText]);
-  useEffect(() => { if (config.apiKey) fetchAvailableModels(config.apiKey).then(setModels); }, [config.apiKey]);
+  useEffect(() => {
+    if (state && state.phase !== 'INIT') {
+      saveGame(state);
+    }
+  }, [state]);
 
   const updateConfig = (patch: Partial<GameConfig>) => {
     const c = { ...config, ...patch };
@@ -75,7 +82,7 @@ export default function App() {
   };
 
   const requestAINarrative = useCallback(async (
-    gs: GameState, results?: CombatTurnResult[], extra?: string
+    gs: GameState, results?: CombatTurnResult[], extra?: string, skipAutoTrigger?: boolean
   ) => {
     if (!config.apiKey) return;
     setIsStreaming(true); setNarrativeText('');
@@ -95,7 +102,7 @@ export default function App() {
     // --- Auto-advance monster turns (Plan B) ---
     // If we're still in combat and it's the system's turn (waitingForPlayer is null), 
     // automatically pop the next unit from the queue.
-    if (gs.phase === 'COMBAT' && gs.combat && !gs.combat.isComplete && gs.combat.waitingForPlayer === null) {
+    if (!skipAutoTrigger && gs.phase === 'COMBAT' && gs.combat && !gs.combat.isComplete && gs.combat.waitingForPlayer === null) {
       setTimeout(() => {
         // We do a small timeout so the user can visually parse the log before the next one starts
         const nextRes = advanceCombat(gs);
@@ -144,7 +151,7 @@ export default function App() {
           </div>
           {!config.apiKey && <p style={{ color: 'var(--des-color)', marginTop: '1rem', zIndex: 1, fontSize: '0.85rem' }}>⚠️ 請先設定 OpenRouter API Key</p>}
         </div>
-        {showSettings && <SettingsModal config={config} models={models} onSave={(c: GameConfig) => { updateConfig(c); setShowSettings(false); }} onClose={() => setShowSettings(false)} />}
+        {showSettings && <SettingsModal config={config} onSave={(c: GameConfig) => { updateConfig(c); setShowSettings(false); }} onClose={() => setShowSettings(false)} />}
       </>
     );
   }
@@ -416,6 +423,23 @@ export default function App() {
     }
   };
 
+  const handleRegenerateNarrative = () => {
+    if (!state || isStreaming) return;
+    const lastLog = state.log[state.log.length - 1];
+    let poppedNarrative = false;
+    if (lastLog) {
+      if (lastLog.type === 'narrative' || (lastLog.type === 'system' && lastLog.text.includes('AI 錯誤'))) {
+        state.log.pop();
+        if (lastLog.type === 'narrative') poppedNarrative = true;
+      }
+    }
+    if (poppedNarrative && state.narrativeHistory.length > 0) {
+      state.narrativeHistory.pop();
+    }
+    setState({ ...state });
+    requestAINarrative(state, undefined, '【系統提示：請重新描述當前場景與狀態】', true);
+  };
+
   // --- Render Game ---
   const aliveEnemies = state.enemies.filter(e => e.isAlive);
   // Phase actions are rendered inline per phase
@@ -492,6 +516,11 @@ export default function App() {
             </div>
             <span className="floor-info">第 {state.floor} 層 / {state.maxFloor}</span>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {state.phase !== 'INIT' && (
+                <button className="btn btn-sm" onClick={handleRegenerateNarrative} disabled={isStreaming}>
+                  🔄 重新生成對話
+                </button>
+              )}
               <button className="btn btn-sm btn-danger" onClick={handleRestart}>重新開始</button>
               <button className="btn btn-sm" onClick={() => setShowSettings(true)}>⚙️</button>
             </div>
@@ -787,7 +816,7 @@ export default function App() {
           </div>
         )}
       </div>
-      {showSettings && <SettingsModal config={config} models={models} onSave={(c: GameConfig) => { updateConfig(c); if (state) { state.nsgEnabled = c.nsgEnabled; setState({ ...state }); } setShowSettings(false); }} onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsModal config={config} onSave={(c: GameConfig) => { updateConfig(c); if (state) { state.nsgEnabled = c.nsgEnabled; setState({ ...state }); } setShowSettings(false); }} onClose={() => setShowSettings(false)} />}
       {showFullLog && state && <LogViewerModal log={state.log} onClose={() => setShowFullLog(false)} />}
     </>
   );
@@ -808,8 +837,8 @@ function StatBar({ label, value, max, type }: { label: string; value: number; ma
   );
 }
 
-function SettingsModal({ config, models, onSave, onClose }: {
-  config: GameConfig; models: ModelInfo[];
+function SettingsModal({ config, onSave, onClose }: {
+  config: GameConfig;
   onSave: (c: GameConfig) => void; onClose: () => void;
 }) {
   const [apiKey, setApiKey] = useState(config.apiKey);
@@ -857,13 +886,9 @@ function SettingsModal({ config, models, onSave, onClose }: {
             <optgroup label="推薦模型">
               {RECOMMENDED_MODELS.map(m => <option key={m.id} value={m.id}>{m.name} ({Math.round(m.contextLength / 1000)}K)</option>)}
             </optgroup>
-            {models.length > RECOMMENDED_MODELS.length && (
-              <optgroup label="所有模型">
-                {models.filter(m => !RECOMMENDED_MODELS.some(r => r.id === m.id)).map(m => (
-                  <option key={m.id} value={m.id}>{m.name} ({Math.round(m.contextLength / 1000)}K)</option>
-                ))}
-              </optgroup>
-            )}
+            <optgroup label="NSFW模型">
+              {NSFW_MODELS.map(m => <option key={m.id} value={m.id}>{m.name} ({Math.round(m.contextLength / 1000)}K)</option>)}
+            </optgroup>
           </select>
         </div>
         <div className="modal-field">
@@ -874,7 +899,7 @@ function SettingsModal({ config, models, onSave, onClose }: {
         </div>
         <div className="modal-actions">
           <button className="btn" onClick={onClose}>取消</button>
-          <button className="btn btn-primary" onClick={() => onSave({ apiKey, modelId, modelName: models.find(m => m.id === modelId)?.name ?? modelId, nsgEnabled: nsg })}>儲存</button>
+          <button className="btn btn-primary" onClick={() => onSave({ apiKey, modelId, modelName: [...RECOMMENDED_MODELS, ...NSFW_MODELS].find(m => m.id === modelId)?.name ?? modelId, nsgEnabled: nsg })}>儲存</button>
         </div>
       </div>
     </div>

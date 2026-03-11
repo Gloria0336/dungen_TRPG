@@ -14,6 +14,9 @@ export const RECOMMENDED_MODELS: ModelInfo[] = [
   { id: 'openai/gpt-4o', name: 'GPT-4o', contextLength: 128000 },
   { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', contextLength: 128000 },
   { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3', contextLength: 65536 },
+];
+
+export const NSFW_MODELS: ModelInfo[] = [
   { id: 'x-ai/grok-4.1-fast', name: 'Grok 4.1 Fast', contextLength: 200000 },
   { id: 'x-ai/grok-3', name: 'Grok 3', contextLength: 131072 },
 ];
@@ -21,31 +24,6 @@ export const RECOMMENDED_MODELS: ModelInfo[] = [
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
-}
-
-export async function fetchAvailableModels(apiKey: string): Promise<ModelInfo[]> {
-  try {
-    const res = await fetch(`${API_BASE}/models`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
-    if (!res.ok) throw new Error(`API error: ${res.status}`);
-    const data = await res.json();
-    return (data.data || [])
-      .filter((m: any) => m.context_length >= 8000)
-      .slice(0, 50)
-      .map((m: any) => ({
-        id: m.id,
-        name: m.name || m.id,
-        contextLength: m.context_length,
-        pricing: m.pricing ? {
-          prompt: m.pricing.prompt,
-          completion: m.pricing.completion,
-        } : undefined,
-      }));
-  } catch (e) {
-    console.error('Failed to fetch models:', e);
-    return RECOMMENDED_MODELS;
-  }
 }
 
 export async function* streamCompletion(
