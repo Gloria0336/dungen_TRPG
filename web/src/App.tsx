@@ -751,11 +751,22 @@ export default function App() {
             )}
             {state.phase === 'REST' && (
               <div className="action-buttons">
-                {[1, 2, 3, 4, 5, 6].map(i => (
-                  <button key={i} className="action-btn" disabled={isStreaming} onClick={() => handleRestAction(i)}>
-                    {['', '原地休息', '探索該層', '下一層', '檢查狀態', '修補裝備', '使用藥水'][i]}
-                  </button>
-                ))}
+                {[1, 2, 3, 4, 5, 6].map(i => {
+                  let label = ['', '原地休息', '探索該層', '下一層', '檢查狀態', '修補裝備', '使用藥水'][i];
+                  if (i === 5) {
+                    const mats = state.inventory.find(item => item.type === 'material')?.quantity || 0;
+                    label = `修補裝備 (${mats}個備品)`;
+                  }
+                  if (i === 6) {
+                    const pots = state.inventory.filter(item => item.type === 'potion').reduce((acc, curr) => acc + curr.quantity, 0);
+                    label = `使用藥水 (${pots}瓶)`;
+                  }
+                  return (
+                    <button key={i} className="action-btn" disabled={isStreaming} onClick={() => handleRestAction(i)}>
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
             )}
             {state.phase === 'SPECIAL' && (

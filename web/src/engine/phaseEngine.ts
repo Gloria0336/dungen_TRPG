@@ -222,19 +222,56 @@ export function processRestAction(
     }
     case 5: {
       // Repair
-      return { result: '裝備修補功能' };
+      let repairedCount = 0;
+      let materialsUsed = 0;
+
+      // Find generic 'material' items in inventory (or specific ones if the game uses them, we'll just check for 'material' type for now as a generic repair kit)
+      const matIndex = state.inventory.findIndex(i => i.type === 'material' && i.quantity > 0);
+      
+      if (matIndex === -1) {
+        return { result: '背包中沒有修補材料！' };
+      }
+
+      for (const p of state.players) {
+        if (p.upperDurability < 100 && state.inventory[matIndex].quantity > 0) {
+          p.upperDurability = Math.min(100, p.upperDurability + 30);
+          state.inventory[matIndex].quantity--;
+          materialsUsed++;
+          repairedCount++;
+        }
+        if (state.inventory[matIndex].quantity === 0) break;
+
+        if (p.lowerDurability < 100 && state.inventory[matIndex].quantity > 0) {
+          p.lowerDurability = Math.min(100, p.lowerDurability + 30);
+          state.inventory[matIndex].quantity--;
+          materialsUsed++;
+          repairedCount++;
+        }
+        if (state.inventory[matIndex].quantity === 0) break;
+      }
+
+      // Cleanup empty stacks
+      if (state.inventory[matIndex].quantity <= 0) {
+        state.inventory.splice(matIndex, 1);
+      }
+
+      if (repairedCount > 0) {
+        return { result: `使用了 ${materialsUsed} 個修補材料，修復了裝備耐久度。` };
+      } else {
+        return { result: '裝備完好無損，不需要修補。' };
+      }
     }
     case 6: {
       // Use potion
-      return { result: '使用藥水' };
+      return { result: '身上沒有適合目前的藥水，或是尚未實裝吃藥介面' };
     }
     case 7: {
       // Change equipment
-      return { result: '裝備更換' };
+      return { result: '尚未實裝換裝介面' };
     }
     case 8: {
       // Revive companion
-      return { result: '復活同伴' };
+      return { result: '尚未實裝復活邏輯' };
     }
     default:
       return { result: '無效行動' };

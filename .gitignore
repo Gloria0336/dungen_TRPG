@@ -1,1 +1,3 @@
 DB資料庫/
+logs/*
+!logs/.gitkeep
