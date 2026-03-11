@@ -222,7 +222,7 @@ export default function App() {
   };
 
   const handleExplore = () => {
-    if (state.exploreRestCount >= 2) {
+    if (state.exploreRestCount >= 3) {
       addLogEntry(state, 'system', `在第 ${state.floor} 層停留過久，必須進入下一層了！`);
       state.exploreRestCount = 0;
       state.floor++;
@@ -335,7 +335,7 @@ export default function App() {
     // 1, 2, 5, 6, 8 consume exploreRestCount
     const consumesTurn = [1, 2, 5, 6, 8].includes(index);
     if (consumesTurn) {
-      if (state.exploreRestCount >= 2) {
+      if (state.exploreRestCount >= 3) {
         addLogEntry(state, 'system', `在第 ${state.floor} 層停留過久，必須進入下一層了！`);
         state.exploreRestCount = 0;
         state.floor++;
@@ -813,7 +813,7 @@ export default function App() {
             {state.phase === 'REST' && (
               <div className="action-buttons">
                 {[1, 2, 3, 4, 5, 6].map(i => {
-                  const remaining = Math.max(0, 2 - state.exploreRestCount);
+                  const remaining = Math.max(0, 3 - state.exploreRestCount);
                   let label = ['', `原地休息 [剩餘:${remaining}]`, `探索該層 [剩餘:${remaining}]`, '下一層', '檢查狀態 (不耗回合)', '修補裝備', '使用藥水'][i];
                   if (i === 5) {
                     const mats = state.inventory.find(item => item.type === 'material')?.quantity || 0;

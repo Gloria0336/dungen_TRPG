@@ -59,7 +59,7 @@ export function getPhaseActions(phase: Phase, state: GameState): string[] {
       return ['選擇事件選項'];
 
     case 'REST': {
-      const remaining = Math.max(0, 2 - (state.exploreRestCount || 0));
+      const remaining = Math.max(0, 3 - (state.exploreRestCount || 0));
       return [
         `1. 原地休息（回復 HP & SP） [剩餘行動:${remaining}]`,
         `2. 探索該層（EVENT 觸發機率 +50%） [剩餘行動:${remaining}]`,
