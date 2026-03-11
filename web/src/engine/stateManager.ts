@@ -36,6 +36,7 @@ export function createNewRun(): GameState {
     log: [],
     stateHistory: [],
     narrativeHistory: [],
+    exploreRestCount: 0,
   };
 }
 

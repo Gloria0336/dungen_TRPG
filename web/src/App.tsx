@@ -222,6 +222,22 @@ export default function App() {
   };
 
   const handleExplore = () => {
+    if (state.exploreRestCount >= 2) {
+      addLogEntry(state, 'system', `在第 ${state.floor} 層停留過久，必須進入下一層了！`);
+      state.exploreRestCount = 0;
+      state.floor++;
+      if (state.shopFloors.includes(state.floor)) {
+        state.phase = 'SHOP';
+        addLogEntry(state, 'system', `🏪 商人出現在第 ${state.floor} 層！`);
+      } else {
+        state.phase = 'EXPLORE';
+      }
+      setState({ ...state });
+      requestAINarrative(state, undefined, `在第 ${state.floor - 1} 層停留過久，你們被迫踏入第 ${state.floor} 層。`);
+      return;
+    }
+
+    state.exploreRestCount++;
     const encounter = generateExploreEncounter(state.floor, state);
     if (encounter.type === 'combat' && encounter.enemies) {
       state.enemies = encounter.enemies;
@@ -316,9 +332,30 @@ export default function App() {
   };
 
   const handleRestAction = (index: number) => {
+    // 1, 2, 5, 6, 8 consume exploreRestCount
+    const consumesTurn = [1, 2, 5, 6, 8].includes(index);
+    if (consumesTurn) {
+      if (state.exploreRestCount >= 2) {
+        addLogEntry(state, 'system', `在第 ${state.floor} 層停留過久，必須進入下一層了！`);
+        state.exploreRestCount = 0;
+        state.floor++;
+        if (state.shopFloors.includes(state.floor)) {
+          state.phase = 'SHOP';
+          addLogEntry(state, 'system', `🏪 商人出現在第 ${state.floor} 層！`);
+        } else {
+          state.phase = 'EXPLORE';
+        }
+        setState({ ...state });
+        requestAINarrative(state, undefined, `在第 ${state.floor - 1} 層停留過久，你們被迫踏入第 ${state.floor} 層。`);
+        return;
+      }
+      state.exploreRestCount++;
+    }
+
     const result = processRestAction(index, state);
     addLogEntry(state, 'system', result.result);
     if (index === 3 && result.phaseChange === 'EXPLORE') {
+      state.exploreRestCount = 0;
       state.floor++;
       // Check shop
       if (state.shopFloors.includes(state.floor)) {
@@ -754,17 +791,19 @@ export default function App() {
             {state.phase === 'REST' && (
               <div className="action-buttons">
                 {[1, 2, 3, 4, 5, 6].map(i => {
-                  let label = ['', '原地休息', '探索該層', '下一層', '檢查狀態', '修補裝備', '使用藥水'][i];
+                  const remaining = Math.max(0, 2 - state.exploreRestCount);
+                  let label = ['', `原地休息 [剩餘:${remaining}]`, `探索該層 [剩餘:${remaining}]`, '下一層', '檢查狀態 (不耗回合)', '修補裝備', '使用藥水'][i];
                   if (i === 5) {
                     const mats = state.inventory.find(item => item.type === 'material')?.quantity || 0;
-                    label = `修補裝備 (${mats}個備品)`;
+                    label = `修補裝備 (${mats}個備品)[剩餘:${remaining}]`;
                   }
                   if (i === 6) {
                     const pots = state.inventory.filter(item => item.type === 'potion').reduce((acc, curr) => acc + curr.quantity, 0);
-                    label = `使用藥水 (${pots}瓶)`;
+                    label = `使用藥水 (${pots}瓶)[剩餘:${remaining}]`;
                   }
+                  const actionBtnClass = "action-btn" + ([1, 2, 5, 6].includes(i) && remaining === 0 ? " disabled-looks" : "");
                   return (
-                    <button key={i} className="action-btn" disabled={isStreaming} onClick={() => handleRestAction(i)}>
+                    <button key={i} className={actionBtnClass} disabled={isStreaming} onClick={() => handleRestAction(i)}>
                       {label}
                     </button>
                   );
@@ -794,6 +833,9 @@ export default function App() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
                 <span className="panel-title" style={{ margin: 0 }}>日誌與資訊</span>
                 <button className="btn btn-sm" onClick={() => setShowLogPanel(false)}>✕</button>
+              </div>
+              <div className="panel-card" style={{ padding: '0.5rem', marginBottom: '0.8rem', textAlign: 'center', fontWeight: 'bold', color: 'var(--sp-color)', border: '1px solid var(--border)' }}>
+                📍 目前層數：第 {state.floor} 層 / {state.maxFloor}
               </div>
               {aliveEnemies.length > 0 && (
                 <div className="panel-card">

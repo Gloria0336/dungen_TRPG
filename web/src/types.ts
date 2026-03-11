@@ -416,6 +416,7 @@ export interface GameState {
   log: GameLogEntry[];
   stateHistory: GameStateSnapshot[];
   narrativeHistory: NarrativeEntry[];
+  exploreRestCount: number;
 }
 
 export interface GameStateSnapshot {

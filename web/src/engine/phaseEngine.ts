@@ -58,17 +58,19 @@ export function getPhaseActions(phase: Phase, state: GameState): string[] {
     case 'EVENT':
       return ['選擇事件選項'];
 
-    case 'REST':
+    case 'REST': {
+      const remaining = Math.max(0, 2 - (state.exploreRestCount || 0));
       return [
-        '1. 原地休息（回復 HP & SP）',
-        '2. 探索該層（EVENT 觸發機率 +50%）',
+        `1. 原地休息（回復 HP & SP） [剩餘行動:${remaining}]`,
+        `2. 探索該層（EVENT 觸發機率 +50%） [剩餘行動:${remaining}]`,
         '3. 進入下一層',
-        '4. 檢查自身狀態',
-        '5. 裝備修補（若有材料）',
-        '6. 飲用藥水（若背包有）',
-        '7. 穿戴/更換裝備',
-        '8. 復活同伴（需道具）',
+        '4. 檢查自身狀態 (不消耗回合)',
+        `5. 裝備修補（若有材料） [剩餘行動:${remaining}]`,
+        `6. 飲用藥水（若背包有） [剩餘行動:${remaining}]`,
+        '7. 穿戴/更換裝備 (不消耗回合)',
+        `8. 復活同伴（需道具） [剩餘行動:${remaining}]`,
       ];
+    }
 
     case 'SHOP':
       return ['購買', '修理裝備', '販售物品', '離開商店'];
