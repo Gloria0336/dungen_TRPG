@@ -99,8 +99,8 @@ export function generateExploreEncounter(
     // Will transition to SHOP, but still need an encounter first
   }
 
-  // Event chance: ~30% base
-  const eventChance = 30;
+  // Event chance: ~10% base
+  const eventChance = 10;
   const eventRoll = percentCheck(eventChance, '探索事件判定');
 
   if (eventRoll.success) {
@@ -233,7 +233,7 @@ export function processRestAction(
 
       // Find generic 'material' items in inventory (or specific ones if the game uses them, we'll just check for 'material' type for now as a generic repair kit)
       const matIndex = state.inventory.findIndex(i => i.type === 'material' && i.quantity > 0);
-      
+
       if (matIndex === -1) {
         return { result: '背包中沒有修補材料！' };
       }

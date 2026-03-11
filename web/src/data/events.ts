@@ -132,9 +132,9 @@ export const EVENT_DB: Record<string, EventDef> = {
       {
         id: 'OP-TRADE-001-C',
         label: '不理會直接離開',
-        requiredCheck: '無',
+        requiredCheck: 'WIL檢定(1D100 <= 40 + WIL*4)',
         successEffects: 'Phase->REST',
-        failEffects: '無'
+        failEffects: '離開時仍被不詳的氣息沾染，DES +10'
       }
     ],
     combatSpawn: null,
