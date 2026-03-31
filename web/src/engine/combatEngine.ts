@@ -177,7 +177,7 @@ export function applyDurabilityDamage(
     case 'upper':
     case 'UPPER':
     case '上':
-      upperChange = -(amount ?? 5) * 1.3;
+      upperChange = -(amount ?? 5) * 1.8;
       player.upperDurability = Math.max(0, player.upperDurability + upperChange);
       applyEquipmentChange(player.equippedUpper, upperChange);
       break;
@@ -205,7 +205,7 @@ export function applyDurabilityDamage(
     default:
       break;
   }
-  
+
   // Round changes to nearest integer
   upperChange = Math.round(upperChange);
   lowerChange = Math.round(lowerChange);
@@ -226,7 +226,7 @@ export function applyEquipmentSideEffects(
   const equips = [player.equippedWeapon, player.equippedUpper, player.equippedLower];
   for (const eq of equips) {
     if (!eq || !eq.sideEffects) continue;
-    
+
     for (const effect of eq.sideEffects) {
       if (effect.trigger === trigger) {
         // Apply effect
@@ -260,14 +260,14 @@ export function applyEquipmentSideEffects(
             changeHandled = true;
             break;
         }
-        
+
         if (changeHandled) {
-           const logMsg = `[鋆??臭???- ${eq.name}] ${effect.description}`;
-           resultObj.diceResults.push({
-             purpose: '裝備副作用',
-             threshold: 0, roll: 0, success: true,
-             effects: logMsg
-           });
+          const logMsg = `[鋆??臭???- ${eq.name}] ${effect.description}`;
+          resultObj.diceResults.push({
+            purpose: '裝備副作用',
+            threshold: 0, roll: 0, success: true,
+            effects: logMsg
+          });
         }
       }
     }
@@ -656,15 +656,15 @@ export function processEnemyAttack(
     let rawDmg = calculateRawDamage(Math.round(enemy.atk * damageMultiplier));
     // Apply monster tier damage modifiers
     if (enemy.tier === 'A' || enemy.tier === 'B') {
-        rawDmg *= 0.8; // -20%
+      rawDmg *= 0.8; // -20%
     } else if (enemy.tier === 'C') {
-        rawDmg *= 0.9; // -10%
+      rawDmg *= 0.9; // -10%
     }
     const finalDmg = calculateFinalDamage(
-      rawDmg, 
-      enemy.ampPercent || 0, 
-      player.drPercent, 
-      player.skillDrPercent, 
+      rawDmg,
+      enemy.ampPercent || 0,
+      player.drPercent,
+      player.skillDrPercent,
       player.flatDr
     );
     result.damageDealt = finalDmg;
@@ -796,7 +796,7 @@ function processPlayerActionSingle(
       if (hitResult.success) {
         let rawDmg = calculateRawDamage(atk);
         rawDmg = Math.round(rawDmg * 1.15); // +15% player damage
-        
+
         const finalDmg = calculateFinalDamage(
           rawDmg,
           getPlayerTotalAmp(player),
@@ -807,7 +807,7 @@ function processPlayerActionSingle(
         result.damageDealt = finalDmg;
         target.hp = Math.max(0, target.hp - finalDmg);
         if (target.hp <= 0) target.isAlive = false;
-        
+
         applyEquipmentSideEffects(player, 'onAttack', result);
       }
       break;
@@ -902,7 +902,7 @@ function processPlayerActionSingle(
           const skillMultiplier = skill.spCost >= 20 ? 1.8 : 1.3;
           let rawDmg = Math.round(calculateRawDamage(atk) * skillMultiplier);
           rawDmg = Math.round(rawDmg * 1.15); // +15% player damage
-          
+
           const finalDmg = calculateFinalDamage(
             rawDmg,
             getPlayerTotalAmp(player),
@@ -910,7 +910,7 @@ function processPlayerActionSingle(
             target.skillDrPercent,
             target.flatDr
           );
-          
+
           result.damageDealt = finalDmg;
           target.hp = Math.max(0, target.hp - finalDmg);
           if (target.hp <= 0) target.isAlive = false;
@@ -932,7 +932,7 @@ function processPlayerActionSingle(
               result.controlDuration = target.controlTurns;
             }
           }
-          
+
           if (skill.id === 'SK-ASSN-POIS') {
             const duration = adjustDurationForTurnOrder(3, state.combat, { enemyId: target.instanceId });
             applyStatusEffect(target, {
@@ -1343,7 +1343,7 @@ export function advanceCombat(state: GameState): CombatTurnResult[] {
 
       // Needs player input
       combat.waitingForPlayer = currentTurn.playerIndex!;
-      
+
       // We can apply 'onTurnStart' side effects here for players
       const dummyResult: CombatTurnResult = {
         actorName: `${p.name}(${p.className})`,
@@ -1360,7 +1360,7 @@ export function advanceCombat(state: GameState): CombatTurnResult[] {
         // Only push to combat queue if side effects actually triggered
         results.push(dummyResult);
       }
-      
+
       break; // Pause engine for player input
 
     } else {
@@ -1445,7 +1445,7 @@ export function processEndOfRound(
       applyEquipmentSideEffects(player, 'onTurnEnd', dummyResult);
       if (dummyResult.diceResults.length > 0) {
         combat.pendingResults.push(dummyResult);
-        
+
         // BD check in case side effect instantly kills/BDs player
         if (player.hp <= 0 || player.des >= 100) {
           if (!player.isBD && !player.isProtagonist && player.des >= 100 && player.hp > 0) {

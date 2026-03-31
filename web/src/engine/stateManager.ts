@@ -3,7 +3,7 @@ import { CLASS_DB, PROTAGONIST_CLASS } from '../data/classes';
 import { EQUIPMENT_DB } from '../data/equipment';
 import { POTION_DB } from '../data/potions';
 import { buildBodySkillRuntime } from '../data/skills';
-import { getWeaponDef } from '../data/weapons';
+import { getRandomWeaponByTier, getWeaponDef } from '../data/weapons';
 import { determineShopFloors } from './shopEngine';
 import { assignAbsoluteCounter } from './counterEngine';
 import { calculateDR } from './combatEngine';
@@ -119,7 +119,7 @@ export function initializePlayer(classId: string, name: string, index: number): 
 }
 
 export function initializeProtagonist(name: string): PlayerState {
-  const starterWeapon = getWeaponDef('WPN-IRON-SWORD');
+  const starterWeapon = getRandomWeaponByTier(1) ?? getWeaponDef('WPN-IRON-SWORD');
   if (!starterWeapon) throw new Error('Missing starter protagonist weapon');
 
   const player: PlayerState = {
@@ -192,14 +192,17 @@ export function createInventoryItemFromDef(def: any): any {
   };
 }
 
-function createWeaponInventoryItem(def: WeaponDef): InventoryItem {
+export function createWeaponInventoryItem(
+  def: WeaponDef,
+  equipStatus: InventoryItem['equipStatus'] = 'Equipped',
+): InventoryItem {
   return {
-    id: `INIT-${def.id}-${Math.random().toString(36).slice(2, 6)}`,
+    id: `${equipStatus === 'Equipped' ? 'INIT' : 'WPN'}-${def.id}-${Math.random().toString(36).slice(2, 6)}`,
     templateId: def.id,
     name: def.name,
     type: 'weapon',
     quantity: 1,
-    equipStatus: 'Equipped',
+    equipStatus,
     equipSlot: 'Weapon',
     durability: 100,
     durabilityMax: 100,
@@ -261,6 +264,30 @@ export function recalculatePlayerStats(player: PlayerState): void {
 
   // Update DR based on durabilities and equips
   player.drPercent = calculateDR(player);
+}
+
+export function equipProtagonistWeapon(
+  player: PlayerState,
+  weaponItem: InventoryItem,
+): InventoryItem | null {
+  if (!player.isProtagonist || weaponItem.type !== 'weapon' || !weaponItem.templateId) {
+    return null;
+  }
+
+  const weaponDef = getWeaponDef(weaponItem.templateId);
+  if (!weaponDef) return null;
+
+  const previousWeapon = player.equippedWeapon
+    ? { ...player.equippedWeapon, equipStatus: 'Inventory' as const }
+    : null;
+
+  player.equippedWeapon = {
+    ...createWeaponInventoryItem(weaponDef),
+    id: weaponItem.id,
+  };
+  player.protagonistWeaponId = weaponDef.id;
+  recalculatePlayerStats(player);
+  return previousWeapon;
 }
 
 export function saveGame(state: GameState): void {

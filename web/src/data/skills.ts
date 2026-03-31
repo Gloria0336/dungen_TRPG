@@ -1,7 +1,7 @@
 import type { BodySkillDef, Skill } from '../types';
 
 export const BODY_SKILL_DB: Record<string, BodySkillDef> = {
-  'BSK-IRON-BODY': { id: 'BSK-IRON-BODY', name: '鐵壁身軀', category: 'passive', effectSummary: '提升 DR%', maxLevel: 5 },
+  'BSK-IRON-BODY': { id: 'BSK-IRON-BODY', name: '鐵壁身軀', category: 'passive', effectSummary: '提升 DR%', maxLevel: 5 }, // maxLevel: 修改最高等級
   'BSK-SWIFT-STEP': { id: 'BSK-SWIFT-STEP', name: '疾風步', category: 'passive', effectSummary: '提升閃避率', maxLevel: 3 },
   'BSK-MANA-FLOW': { id: 'BSK-MANA-FLOW', name: '魔力流通', category: 'passive', effectSummary: '每回合回復 SP', maxLevel: 3 },
   'BSK-BATTLE-FURY': { id: 'BSK-BATTLE-FURY', name: '戰鬥狂熱', category: 'passive', effectSummary: 'HP 低於 50% 時增傷', maxLevel: 3 },
@@ -47,70 +47,142 @@ function activeBodySkill(
 export function buildBodySkillRuntime(skillId: string, level: number): Skill {
   switch (skillId) {
     case 'BSK-SECOND-WIND':
-      return activeBodySkill(skillId, level, 8 + level * 2, 2, 'self', '回復自身 HP', {
-        baseHeal: 18 + level * 10,
-        healScalingStat: 'wil',
-        healScalingFactor: 2,
-      });
+      return activeBodySkill(
+        skillId,
+        level,
+        6 + level * 2, // 修改 SP 消耗
+        2,             // 修改 冷卻回合 (cooldown)
+        'self',
+        '回復自身 HP',
+        {
+          baseHeal: 18 + level * 10, // 修改 基礎治療量
+          healScalingStat: 'wil',     // 修改 治療加成屬性 (wil=意志)
+          healScalingFactor: 2,       // 修改 治療加成倍率
+        },
+      );
     case 'BSK-FOCUS':
-      return activeBodySkill(skillId, level, 10, 3, 'self', '提升下次技能威力', {
-        selfEffect: {
-          name: '集中意志',
-          duration: 2,
-          effect: `STR +${3 + level * 2}`,
-          type: 'statMod',
-          targetStat: 'str',
-          amount: 3 + level * 2,
+      return activeBodySkill(
+        skillId,
+        level,
+        8 + level * 2, // 修改 SP 消耗
+        3,  // 修改 冷卻回合
+        'self',
+        '提升下次技能威力',
+        {
+          selfEffect: {
+            name: '集中意志',
+            duration: 2, // 修改 Buff 持續回合
+            effect: `STR +${3 + level * 2}`,
+            type: 'statMod',
+            targetStat: 'str',
+            amount: 3 + level * 2, // 修改 力量加成量
+          },
         },
-      });
+      );
     case 'BSK-EVASIVE':
-      return activeBodySkill(skillId, level, 10, 2, 'self', '本回合大幅提高閃避', {
-        selfEffect: {
-          name: '殘影步',
-          duration: 1,
-          effect: `閃避 +${20 + level * 10}`,
-          type: 'statMod',
-          targetStat: 'evade',
-          amount: 20 + level * 10,
+      return activeBodySkill(
+        skillId,
+        level,
+        8 + level * 2, // 修改 SP 消耗
+        2,  // 修改 冷卻回合
+        'self',
+        '本回合大幅提高閃避',
+        {
+          selfEffect: {
+            name: '殘影步',
+            duration: 1, // 修改 持續回合
+            effect: `閃避 +${20 + level * 10}`,
+            type: 'statMod',
+            targetStat: 'evade',
+            amount: 20 + level * 10, // 修改 閃避加成量
+          },
         },
-      });
+      );
     case 'BSK-BREAK':
-      return activeBodySkill(skillId, level, 10 + level, 2, 'enemy_single', '低傷害並降低敵方減傷', {
-        damageMultiplier: 1.05 + level * 0.1,
-        targetEffect: {
-          name: '破甲',
-          duration: 2,
-          effect: `SkillDR -${8 + level * 4}`,
-          type: 'buff',
-          targetStat: 'skillDr',
-          amount: -(8 + level * 4),
+      return activeBodySkill(
+        skillId,
+        level,
+        9 + level, // 修改 SP 消耗
+        2,          // 修改 冷卻回合
+        'enemy_single',
+        '低傷害並降低敵方減傷',
+        {
+          damageMultiplier: 1.2 + level * 0.1, // 修改 攻擊傷害倍率
+          targetEffect: {
+            name: '破甲',
+            duration: 2, // 修改 Debuff 持續回合
+            effect: `SkillDR -${8 + level * 4}`,
+            type: 'buff',
+            targetStat: 'skillDr',
+            amount: -(8 + level * 4), // 修改 減傷降低量
+          },
         },
-      });
+      );
     case 'BSK-STUN':
-      return activeBodySkill(skillId, level, 12 + level, 3, 'enemy_single', '傷害並嘗試控制', {
-        damageMultiplier: 1.2 + level * 0.2,
-        controlTurns: 1,
-      });
+      return activeBodySkill(
+        skillId,
+        level,
+        12 + level, // 修改 SP 消耗
+        3,          // 修改 冷卻回合
+        'enemy_single',
+        '傷害並嘗試控制',
+        {
+          damageMultiplier: 1.2 + level * 0.2, // 修改 攻擊傷害倍率
+          controlTurns: 1 + level,                    // 修改 控制(暈眩)回合
+        },
+      );
     case 'BSK-DRAIN':
-      return activeBodySkill(skillId, level, 12, 2, 'enemy_single', '造成傷害並回復 HP', {
-        damageMultiplier: 1.1 + level * 0.15,
-        lifeStealPercent: 30 + level * 15,
-      });
+      return activeBodySkill(
+        skillId,
+        level,
+        12, // 修改 SP 消耗
+        2,  // 修改 冷卻回合
+        'enemy_single',
+        '造成傷害並回復 HP',
+        {
+          damageMultiplier: 1.2 + level * 0.15, // 修改 攻擊傷害倍率
+          lifeStealPercent: 30 + level * 15,    // 修改 吸血百分比 (%)
+        },
+      );
     case 'BSK-PIERCE':
-      return activeBodySkill(skillId, level, 10 + level * 2, 1, 'enemy_single', '忽略敵方防禦', {
-        damageMultiplier: 1.25 + level * 0.15,
-        ignoreDefense: true,
-      });
+      return activeBodySkill(
+        skillId,
+        level,
+        10 + level * 2, // 修改 SP 消耗
+        1,              // 修改 冷卻回合
+        'enemy_single',
+        '忽略敵方防禦',
+        {
+          damageMultiplier: 1.3 + level * 0.15, // 修改 攻擊傷害倍率
+          ignoreDefense: true,                  // 修改 是否忽略防禦 (true/false)
+        },
+      );
     case 'BSK-AREA':
-      return activeBodySkill(skillId, level, 16 + level * 2, 3, 'enemy_all', '攻擊全體敵人', {
-        damageMultiplier: 0.9 + level * 0.15,
-      });
+      return activeBodySkill(
+        skillId,
+        level,
+        16 + level * 2, // 修改 SP 消耗
+        3,              // 修改 冷卻回合
+        'enemy_all',
+        '攻擊全體敵人',
+        {
+          damageMultiplier: 0.9 + level * 0.15, // 修改 攻擊全體傷害倍率
+        },
+      );
     case 'BSK-HEAL-TOUCH':
-      return activeBodySkill(skillId, level, 10 + level * 2, 2, 'ally_single', '治療一名隊友', {
-        baseHeal: 20 + level * 12,
-        healScalingStat: 'wil',
-        healScalingFactor: 1.5,
-      });
+      return activeBodySkill(
+        skillId,
+        level,
+        10 + level * 2, // 修改 SP 消耗
+        2,              // 修改 冷卻回合
+        'ally_single',
+        '治療一名隊友',
+        {
+          baseHeal: 20 + level * 12, // 修改 基礎治療量
+          healScalingStat: 'wil',     // 修改 治療加成屬性 (wil=意志)
+          healScalingFactor: 1.5,     // 修改 治療加成倍率
+        },
+      );
     default: {
       const def = BODY_SKILL_DB[skillId];
       return {

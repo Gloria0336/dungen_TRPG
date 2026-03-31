@@ -9,6 +9,7 @@ import { getBodySkillDef } from './data/skills';
 import {
   createNewRun, initializePlayer, initializeProtagonist, saveGame, loadGame,
   hasSave, deleteSave, addLogEntry, createSnapshot, synthesizeProtagonistSkills, recalculatePlayerStats,
+  equipProtagonistWeapon,
 } from './engine/stateManager';
 import {
   initCombat, processPlayerAction,
@@ -455,6 +456,11 @@ export default function App() {
   };
 
   const handleRestAction = (index: number) => {
+    if (index === 7) {
+      setShowBackpackModal(true);
+      return;
+    }
+
     // 1, 2, 5, 6, 8 consume exploreRestCount
     const consumesTurn = [1, 2, 5, 6, 8].includes(index);
     if (consumesTurn) {
@@ -1208,6 +1214,29 @@ export default function App() {
             setState({ ...state });
             requestAINarrative(state, undefined, `${player.name} 從背包取出【${item.name}】服用，${effectStr}。`);
           }}
+          onEquipWeapon={(itemId) => {
+            const protagonist = state.players?.find((player) => player.isProtagonist);
+            const itemIndex = state.inventory.findIndex((i) => i.id === itemId);
+            if (!protagonist || itemIndex === -1) return;
+
+            const item = state.inventory[itemIndex];
+            const previousWeaponName = protagonist.equippedWeapon?.name;
+            const previousWeapon = equipProtagonistWeapon(protagonist, item);
+            if (!protagonist.equippedWeapon) return;
+
+            state.inventory.splice(itemIndex, 1);
+            if (previousWeapon) state.inventory.push(previousWeapon);
+
+            addLogEntry(
+              state,
+              'system',
+              previousWeaponName
+                ? `主角將武器從【${previousWeaponName}】更換為【${protagonist.equippedWeapon.name}】`
+                : `主角裝備了【${protagonist.equippedWeapon.name}】`,
+            );
+            saveGame(state);
+            setState({ ...state });
+          }}
           onClose={() => setShowBackpackModal(false)}
         />
       )}
@@ -1305,16 +1334,19 @@ function SettingsModal({ config, onSave, onClose }: {
   );
 }
 
-function BackpackModal({ inventory, players, onUseItem, onClose }: {
+function BackpackModal({ inventory, players, onUseItem, onEquipWeapon, onClose }: {
   inventory: import('./types').InventoryItem[];
   players: [import('./types').PlayerState, import('./types').PlayerState];
   onUseItem: (itemId: string, playerIndex: number) => void;
+  onEquipWeapon: (itemId: string) => void;
   onClose: () => void;
 }) {
   const [selectingPlayerFor, setSelectingPlayerFor] = useState<string | null>(null);
 
+  const protagonist = players.find((player) => player.isProtagonist) ?? null;
   const usableItems = inventory.filter(i => i.type === 'potion' && i.quantity > 0 && i.stateChanges && Object.keys(i.stateChanges).length > 0);
-  const otherItems = inventory.filter(i => !(i.type === 'potion' && i.stateChanges && Object.keys(i.stateChanges).length > 0));
+  const weaponItems = inventory.filter((i) => i.type === 'weapon' && i.quantity > 0);
+  const otherItems = inventory.filter(i => i.type !== 'weapon' && !(i.type === 'potion' && i.stateChanges && Object.keys(i.stateChanges).length > 0));
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -1363,6 +1395,35 @@ function BackpackModal({ inventory, players, onUseItem, onClose }: {
                 </button>
               </div>
             ))}
+          </div>
+        )}
+
+        {weaponItems.length > 0 && (
+          <div style={{ marginBottom: '1rem' }}>
+            <div className="panel-title" style={{ marginBottom: '0.5rem' }}>可裝備武器</div>
+            {weaponItems.map((item) => {
+              const isEquipped = protagonist?.equippedWeapon?.templateId === item.templateId;
+              return (
+                <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--border)' }}>
+                  <div>
+                    <div className="text-sm" style={{ color: 'var(--text-primary)' }}>
+                      {item.name}
+                      {typeof item.atk === 'number' && <span style={{ color: 'var(--text-dim)' }}> / ATK {item.atk}</span>}
+                      {typeof item.ampPercent === 'number' && <span style={{ color: 'var(--text-dim)' }}> / AMP +{item.ampPercent}%</span>}
+                      {typeof item.flatDr === 'number' && <span style={{ color: 'var(--text-dim)' }}> / DR +{item.flatDr}</span>}
+                    </div>
+                    {isEquipped && <div className="text-sm" style={{ color: 'var(--sp-color)' }}>目前裝備中</div>}
+                  </div>
+                  <button
+                    className="btn btn-sm btn-primary"
+                    disabled={selectingPlayerFor !== null || isEquipped || !item.templateId}
+                    onClick={() => onEquipWeapon(item.id)}
+                  >
+                    裝備
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
 

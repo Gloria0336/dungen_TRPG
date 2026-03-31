@@ -115,33 +115,52 @@ export function generateExploreEncounter(
 /** Generate enemies based on floor */
 export function generateEnemies(floor: number): EnemyState[] {
   const enemies: EnemyState[] = [];
+  const aMonsters = getMonstersByTier('A');
+  const bMonsters = getMonstersByTier('B');
+  const bosses = getMonstersByTier('C');
 
   // Determine encounter composition based on floor
-  if (floor === 10 || floor === 20) {
+  if (floor === 20) {
+    // Final boss floor: 2 C bosses
+    for (let i = 0; i < 2; i++) {
+      const boss = bosses[Math.floor(Math.random() * bosses.length)];
+      enemies.push(createEnemyInstance(boss, floor, i));
+    }
+  } else if (floor === 10) {
     // Boss floor
-    const bosses = getMonstersByTier('C');
     const boss = bosses[Math.floor(Math.random() * bosses.length)];
     enemies.push(createEnemyInstance(boss, floor, 0));
-  } else if (floor >= 13) {
-    // High floors: B type + sometimes A types
-    const bMonsters = getMonstersByTier('B');
+  } else if (floor >= 13 && floor <= 19) {
+    // High floors: always 1 B, then 60% another B or 40% 2-3 A types
+    const b = bMonsters[Math.floor(Math.random() * bMonsters.length)];
+    enemies.push(createEnemyInstance(b, floor, 0));
+
+    if (Math.random() < 0.6) {
+      const extraB = bMonsters[Math.floor(Math.random() * bMonsters.length)];
+      enemies.push(createEnemyInstance(extraB, floor, 1));
+    } else {
+      const count = randomInt(2, 3);
+      for (let i = 0; i < count; i++) {
+        const a = aMonsters[Math.floor(Math.random() * aMonsters.length)];
+        enemies.push(createEnemyInstance(a, floor, i + 1));
+      }
+    }
+  } else if (floor >= 11 && floor <= 12) {
+    // Always 1 B, with 40% chance to add 1 A
     const b = bMonsters[Math.floor(Math.random() * bMonsters.length)];
     enemies.push(createEnemyInstance(b, floor, 0));
 
     if (Math.random() < 0.4) {
-      const aMonsters = getMonstersByTier('A');
       const a = aMonsters[Math.floor(Math.random() * aMonsters.length)];
       enemies.push(createEnemyInstance(a, floor, 1));
     }
-  } else if (floor >= 5) {
-    // Mid floors: mix of A and B
-    if (Math.random() < 0.5) {
-      const bMonsters = getMonstersByTier('B');
+  } else if (floor >= 5 && floor <= 9) {
+    // Mid floors: 70% single B, 30% multiple A
+    if (Math.random() < 0.7) {
       const b = bMonsters[Math.floor(Math.random() * bMonsters.length)];
       enemies.push(createEnemyInstance(b, floor, 0));
     } else {
       // Multiple A types
-      const aMonsters = getMonstersByTier('A');
       const count = randomInt(2, 3);
       for (let i = 0; i < count; i++) {
         const a = aMonsters[Math.floor(Math.random() * aMonsters.length)];
@@ -150,7 +169,6 @@ export function generateEnemies(floor: number): EnemyState[] {
     }
   } else {
     // Early floors: A types only
-    const aMonsters = getMonstersByTier('A');
     const count = randomInt(1, 3);
     for (let i = 0; i < count; i++) {
       const a = aMonsters[Math.floor(Math.random() * aMonsters.length)];
