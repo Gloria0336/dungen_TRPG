@@ -440,9 +440,21 @@ function applyFormulaSelfEffects(
   }
 
   if (formula.restoreSp) {
+    const restoreSpScaling = formula.restoreSpScalingStat
+      ? player[formula.restoreSpScalingStat] * (formula.restoreSpScalingFactor ?? 0)
+      : 0;
     const beforeSp = player.sp;
-    player.sp = Math.min(player.maxSp, player.sp + formula.restoreSp);
+    player.sp = Math.min(player.maxSp, player.sp + Math.round(formula.restoreSp + restoreSpScaling));
     result.spChange += player.sp - beforeSp;
+  }
+
+  if (formula.restoreDes) {
+    const restoreDesScaling = formula.restoreDesScalingStat
+      ? player[formula.restoreDesScalingStat] * (formula.restoreDesScalingFactor ?? 0)
+      : 0;
+    const beforeDes = player.des;
+    player.des = Math.max(0, player.des - Math.round(formula.restoreDes + restoreDesScaling));
+    result.desChange += player.des - beforeDes;
   }
 
   if (skill.id === 'SK-FIGHT-RAGE') {
@@ -1048,6 +1060,7 @@ function createPlayerTurnResult(player: PlayerState): CombatTurnResult {
 
 function applySupportSkillEffect(
   skill: PlayerState['skills'][number],
+  caster: PlayerState,
   target: PlayerState,
   result: CombatTurnResult,
   combat: CombatState | null | undefined,
@@ -1056,11 +1069,29 @@ function applySupportSkillEffect(
   if (skill.formula) {
     const formula = skill.formula;
     if (formula.baseHeal) {
-      const scaling = formula.healScalingStat ? target[formula.healScalingStat] * (formula.healScalingFactor ?? 0) : 0;
+      const scaling = formula.healScalingStat ? caster[formula.healScalingStat] * (formula.healScalingFactor ?? 0) : 0;
       const healAmount = Math.round(formula.baseHeal + scaling);
       const beforeHp = target.hp;
       target.hp = Math.min(target.maxHp, target.hp + healAmount);
       result.hpChange = target.hp - beforeHp;
+    }
+
+    if (formula.restoreSp) {
+      const restoreSpScaling = formula.restoreSpScalingStat
+        ? caster[formula.restoreSpScalingStat] * (formula.restoreSpScalingFactor ?? 0)
+        : 0;
+      const beforeSp = target.sp;
+      target.sp = Math.min(target.maxSp, target.sp + Math.round(formula.restoreSp + restoreSpScaling));
+      result.spChange += target.sp - beforeSp;
+    }
+
+    if (formula.restoreDes) {
+      const restoreDesScaling = formula.restoreDesScalingStat
+        ? caster[formula.restoreDesScalingStat] * (formula.restoreDesScalingFactor ?? 0)
+        : 0;
+      const beforeDes = target.des;
+      target.des = Math.max(0, target.des - Math.round(formula.restoreDes + restoreDesScaling));
+      result.desChange += target.des - beforeDes;
     }
 
     const effect = makeAdjustedStatusEffect(formula.selfEffect, combat, { playerIndex: targetPlayerIndex });
@@ -1247,7 +1278,7 @@ export function processPlayerAction(
     result.action = skill.name;
     result.targetName = target.name;
     const targetIndex = (state.players ?? []).findIndex((candidate) => candidate.name === target.name);
-    applySupportSkillEffect(skill, target, result, state.combat, targetIndex >= 0 ? targetIndex : 0);
+    applySupportSkillEffect(skill, player, target, result, state.combat, targetIndex >= 0 ? targetIndex : 0);
     return result;
   });
 

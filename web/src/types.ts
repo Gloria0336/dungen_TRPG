@@ -56,6 +56,11 @@ export interface SkillFormula {
   healScalingStat?: 'str' | 'agi' | 'wil';
   healScalingFactor?: number;
   restoreSp?: number;
+  restoreSpScalingStat?: 'str' | 'agi' | 'wil';
+  restoreSpScalingFactor?: number;
+  restoreDes?: number;
+  restoreDesScalingStat?: 'str' | 'agi' | 'wil';
+  restoreDesScalingFactor?: number;
   lifeStealPercent?: number;
   ignoreDefense?: boolean;
   ignoreDrPercent?: boolean;
