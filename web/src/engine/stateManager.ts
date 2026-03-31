@@ -21,8 +21,8 @@ export function createNewRun(): GameState {
   const p001 = POTION_DB['IT-POT-001'];
   const p002 = POTION_DB['IT-POT-002'];
   const initialInventory = [
-    { id: `INIT-POT001-${Math.random().toString(36).slice(2,6)}`, name: p001.templateName, type: p001.itemType, quantity: 2, equipStatus: 'Inventory' as const, stateChanges: p001.stateChanges, effectSummary: p001.effectSummary },
-    { id: `INIT-POT002-${Math.random().toString(36).slice(2,6)}`, name: p002.templateName, type: p002.itemType, quantity: 2, equipStatus: 'Inventory' as const, stateChanges: p002.stateChanges, effectSummary: p002.effectSummary },
+    { id: `INIT-POT001-${Math.random().toString(36).slice(2,6)}`, templateId: p001.id, name: p001.templateName, type: p001.itemType, quantity: 2, equipStatus: 'Inventory' as const, stateChanges: p001.stateChanges, effectSummary: p001.effectSummary },
+    { id: `INIT-POT002-${Math.random().toString(36).slice(2,6)}`, templateId: p002.id, name: p002.templateName, type: p002.itemType, quantity: 2, equipStatus: 'Inventory' as const, stateChanges: p002.stateChanges, effectSummary: p002.effectSummary },
   ];
 
   return {

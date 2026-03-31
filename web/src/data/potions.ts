@@ -106,6 +106,26 @@ export const POTION_DB: Record<string, PotionDef> = {
     notes: '由清涼草提煉出的藥水，能快速平復狂躁的心情',
     jailbreakNotes: '雖然能帶來平靜，但會讓角色陷入短暫的空虛與虛無感，對外界刺激的抵抗力暫時下降。',
   },
+  'IT-POT-ANTIDOTE': {
+    id: 'IT-POT-ANTIDOTE',
+    templateName: '解毒劑',
+    itemType: 'potion',
+    effectSummary: 'DES -15',
+    stateChanges: { des_delta: -15 },
+    shopPrice: 20,
+    usePhase: ['EXPLORE', 'REST', 'SHOP'] as Phase[],
+    notes: '可在事件中中和毒霧，也能在平時降低少量 DES。',
+  },
+  'IT-MAT-BOTTLE': {
+    id: 'IT-MAT-BOTTLE',
+    templateName: '空瓶',
+    itemType: 'material',
+    effectSummary: '可在特殊事件中裝取液體。',
+    stateChanges: {},
+    shopPrice: 8,
+    usePhase: ['REST', 'SHOP'] as Phase[],
+    notes: '事件製作與採集用的容器。',
+  },
 };
 
 export function getPotionDef(id: string): PotionDef | undefined {

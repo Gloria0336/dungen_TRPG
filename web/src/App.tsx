@@ -17,7 +17,17 @@ import {
 } from './engine/combatEngine';
 import { isAllyTargetingSkill, skillNeedsTargetSelection } from './engine/skillTargeting';
 import { generateEnemies, generateExploreEncounter, processRestAction } from './engine/phaseEngine';
-import { generateGoldDrop, rollBodySkillDrop, rollItemDrop, processGrowth } from './engine/lootEngine';
+import {
+  addItemToInventory,
+  consumeEventItem,
+  createFixedEventItem,
+  generateGoldDrop,
+  hasEventRequirement,
+  rollBodySkillDrop,
+  rollEventItemDrop,
+  rollItemDrop,
+  processGrowth,
+} from './engine/lootEngine';
 // shop engine used indirectly via phase transitions
 import { formatDiceResult } from './engine/diceEngine';
 import { requestNarrative, addNarrativeToHistory } from './ai/narrativeService';
@@ -510,7 +520,11 @@ export default function App() {
     const effects = option.successEffects; // Simplified: usually events have distinct success/fail but labels imply the check
     let actualEffects = effects;
 
-    if (option.requiredCheck !== '無') {
+    if (option.requiredCheck.includes('需持有')) {
+      actualEffects = hasEventRequirement(state.inventory, option.requiredCheck)
+        ? option.successEffects
+        : option.failEffects;
+    } else if (option.requiredCheck !== '無') {
       // Basic stat check logic
       const isAgi = option.requiredCheck.includes('AGI') || option.requiredCheck.includes('DEX');
       const isStr = option.requiredCheck.includes('STR');
@@ -570,6 +584,39 @@ export default function App() {
         p.lowerDurability = Math.max(0, Math.min(100, p.lowerDurability + val));
         recalculatePlayerStats(p);
       });
+    }
+
+    const rewardMatches = [...actualEffects.matchAll(/獲得\s*([^；]+?)\s*x(\d+)/g)];
+    for (const match of rewardMatches) {
+      const rewardName = match[1].trim();
+      const quantity = parseInt(match[2], 10);
+
+      for (let count = 0; count < quantity; count++) {
+        const reward =
+          rewardName === '隨機道具'
+            ? rollEventItemDrop(state.floor, 'event_random')
+            : rewardName === '普通道具'
+              ? rollEventItemDrop(state.floor, 'event_common')
+              : rewardName === '貴重戰利品'
+                ? rollEventItemDrop(state.floor, 'event_valuable')
+                : createFixedEventItem(rewardName);
+
+        if (!reward) continue;
+
+        const addedItem = addItemToInventory(state.inventory, reward);
+        const effectDesc = addedItem.effectSummary ? `（${addedItem.effectSummary}）` : '';
+        addLogEntry(state, 'system', `🎁 獲得 ${addedItem.name} x${reward.quantity}${effectDesc}`);
+      }
+    }
+
+    const consumeMatches = [...actualEffects.matchAll(/消耗\s*([^；]+?)\s*x(\d+)/g)];
+    for (const match of consumeMatches) {
+      const itemName = match[1].trim();
+      const quantity = parseInt(match[2], 10);
+      const consumed = consumeEventItem(state.inventory, itemName, quantity);
+      if (consumed) {
+        addLogEntry(state, 'system', `🧪 消耗 ${itemName} x${quantity}`);
+      }
     }
 
     if (actualEffects.includes('Phase->COMBAT')) {
