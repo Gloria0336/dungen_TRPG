@@ -1,7 +1,9 @@
-import type { GameState, PlayerState } from '../types';
-import { CLASS_DB } from '../data/classes';
+import type { GameState, InventoryItem, PlayerState, WeaponDef } from '../types';
+import { CLASS_DB, PROTAGONIST_CLASS } from '../data/classes';
 import { EQUIPMENT_DB } from '../data/equipment';
 import { POTION_DB } from '../data/potions';
+import { buildBodySkillRuntime } from '../data/skills';
+import { getWeaponDef } from '../data/weapons';
 import { determineShopFloors } from './shopEngine';
 import { assignAbsoluteCounter } from './counterEngine';
 import { calculateDR } from './combatEngine';
@@ -46,6 +48,7 @@ export function createNewRun(): GameState {
     stateHistory: [],
     narrativeHistory: [],
     exploreRestCount: 0,
+    pendingBodySkillDrop: null,
   };
 }
 
@@ -57,10 +60,14 @@ export function initializePlayer(classId: string, name: string, index: number): 
     name: name || `角色${index + 1}`,
     classId,
     className: cls.className,
+    role: 'companion',
+    isProtagonist: false,
     hp: cls.baseHp,
     maxHp: cls.baseHp,
+    baseMaxHp: cls.baseHp,
     sp: cls.baseSp,
     maxSp: cls.baseSp,
+    baseMaxSp: cls.baseSp,
     des: cls.baseDes,
     str: cls.autoStats.STR,
     agi: cls.autoStats.AGI,
@@ -79,6 +86,10 @@ export function initializePlayer(classId: string, name: string, index: number): 
     controlImmunityTurns: 0,
     statusEffects: [],
     skills: cls.skillList.map(s => ({ ...s, currentCooldown: 0 })),
+    weaponSkillSlots: [],
+    bodySkillSlots: [null, null],
+    protagonistWeaponId: null,
+    statPoints: 0,
     backgroundTags: [],
     narrativeTags: [],
     absoluteCounter: assignAbsoluteCounter(),
@@ -107,9 +118,63 @@ export function initializePlayer(classId: string, name: string, index: number): 
   return player;
 }
 
+export function initializeProtagonist(name: string): PlayerState {
+  const starterWeapon = getWeaponDef('WPN-IRON-SWORD');
+  if (!starterWeapon) throw new Error('Missing starter protagonist weapon');
+
+  const player: PlayerState = {
+    name: name || '主角',
+    classId: PROTAGONIST_CLASS.id,
+    className: PROTAGONIST_CLASS.className,
+    role: 'protagonist',
+    isProtagonist: true,
+    hp: PROTAGONIST_CLASS.baseHp,
+    maxHp: PROTAGONIST_CLASS.baseHp,
+    baseMaxHp: PROTAGONIST_CLASS.baseHp,
+    sp: PROTAGONIST_CLASS.baseSp,
+    maxSp: PROTAGONIST_CLASS.baseSp,
+    baseMaxSp: PROTAGONIST_CLASS.baseSp,
+    des: PROTAGONIST_CLASS.baseDes,
+    str: 0,
+    agi: 0,
+    wil: 0,
+    drPercent: 0,
+    skillDrPercent: 0,
+    flatDr: 0,
+    ampPercent: 0,
+    drU: 0,
+    drL: 0,
+    upperDurability: 100,
+    lowerDurability: 100,
+    isControlled: false,
+    controlTurns: 0,
+    controlImmunity: false,
+    controlImmunityTurns: 0,
+    statusEffects: [],
+    skills: [],
+    weaponSkillSlots: [],
+    bodySkillSlots: [null, null],
+    protagonistWeaponId: starterWeapon.id,
+    statPoints: 0,
+    backgroundTags: [],
+    narrativeTags: [],
+    absoluteCounter: assignAbsoluteCounter(),
+    isAlive: true,
+    isBD: false,
+    equippedWeapon: createWeaponInventoryItem(starterWeapon),
+    equippedUpper: null,
+    equippedLower: null,
+  };
+
+  synthesizeProtagonistSkills(player);
+  recalculatePlayerStats(player);
+  return player;
+}
+
 export function createInventoryItemFromDef(def: any): any {
   return {
     id: `INIT-${def.id}-${Math.random().toString(36).slice(2, 6)}`,
+    templateId: def.id,
     name: def.templateName,
     type: def.itemType,
     quantity: 1,
@@ -127,7 +192,60 @@ export function createInventoryItemFromDef(def: any): any {
   };
 }
 
+function createWeaponInventoryItem(def: WeaponDef): InventoryItem {
+  return {
+    id: `INIT-${def.id}-${Math.random().toString(36).slice(2, 6)}`,
+    templateId: def.id,
+    name: def.name,
+    type: 'weapon',
+    quantity: 1,
+    equipStatus: 'Equipped',
+    equipSlot: 'Weapon',
+    durability: 100,
+    durabilityMax: 100,
+    atk: def.atk,
+    ampPercent: def.ampPercent,
+    flatDr: def.flatDr,
+  };
+}
+
+function getBodySkillLevel(player: PlayerState, skillId: string): number {
+  return player.bodySkillSlots.find((slot) => slot?.skillId === skillId)?.level ?? 0;
+}
+
+export function synthesizeProtagonistSkills(player: PlayerState): void {
+  if (!player.isProtagonist) return;
+
+  const cooldownById = new Map<string, number>(
+    player.skills.map((skill) => [skill.id, skill.currentCooldown ?? 0]),
+  );
+
+  const weaponDef = player.protagonistWeaponId ? getWeaponDef(player.protagonistWeaponId) : undefined;
+  const weaponSkills = weaponDef
+    ? weaponDef.skills.map((skill) => ({ ...skill, currentCooldown: cooldownById.get(skill.id) ?? 0 }))
+    : [];
+
+  const bodySkills = player.bodySkillSlots
+    .filter((slot): slot is NonNullable<typeof slot> => slot !== null)
+    .map((slot) => {
+      const skill = buildBodySkillRuntime(slot.skillId, slot.level);
+      return { ...skill, currentCooldown: cooldownById.get(skill.id) ?? 0 };
+    });
+
+  const painResistBonus = getBodySkillLevel(player, 'BSK-PAIN-RESIST') * 12;
+  player.maxHp = player.baseMaxHp + painResistBonus;
+  player.maxSp = player.baseMaxSp;
+  player.hp = Math.min(player.hp, player.maxHp);
+  player.sp = Math.min(player.sp, player.maxSp);
+  player.weaponSkillSlots = weaponSkills;
+  player.skills = [...weaponSkills, ...bodySkills];
+}
+
 export function recalculatePlayerStats(player: PlayerState): void {
+  if (player.baseMaxHp === undefined) player.baseMaxHp = player.maxHp;
+  if (player.baseMaxSp === undefined) player.baseMaxSp = player.maxSp;
+  if (player.isProtagonist) synthesizeProtagonistSkills(player);
+
   // Reset flat bonuses
   player.flatDr = 0;
   player.ampPercent = 0;
@@ -156,7 +274,8 @@ export function saveGame(state: GameState): void {
 export function loadGame(): GameState | null {
   try {
     const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : null;
+    if (!data) return null;
+    return hydrateGameState(JSON.parse(data));
   } catch {
     return null;
   }
@@ -204,4 +323,50 @@ export function createSnapshot(state: GameState): void {
   if (state.stateHistory.length > 50) {
     state.stateHistory = state.stateHistory.slice(-30);
   }
+}
+
+function hydratePlayer(player: PlayerState, index: number): PlayerState {
+  player.role = player.role ?? (player.isProtagonist ? 'protagonist' : 'companion');
+  player.isProtagonist = player.isProtagonist ?? player.classId === PROTAGONIST_CLASS.id;
+  player.baseMaxHp = player.baseMaxHp ?? player.maxHp;
+  player.baseMaxSp = player.baseMaxSp ?? player.maxSp;
+  player.weaponSkillSlots = player.weaponSkillSlots ?? [];
+  player.bodySkillSlots = player.bodySkillSlots ?? [null, null];
+  player.protagonistWeaponId = player.protagonistWeaponId ?? (player.isProtagonist ? player.equippedWeapon?.templateId ?? 'WPN-IRON-SWORD' : null);
+  player.statPoints = player.statPoints ?? 0;
+  player.controlImmunity = player.controlImmunity ?? false;
+  player.controlImmunityTurns = player.controlImmunityTurns ?? 0;
+  player.statusEffects = player.statusEffects ?? [];
+  player.backgroundTags = player.backgroundTags ?? [];
+  player.narrativeTags = player.narrativeTags ?? [];
+  player.skills = player.skills ?? [];
+
+  if (!player.isProtagonist) {
+    player.role = 'companion';
+    player.weaponSkillSlots = [];
+    player.bodySkillSlots = [null, null];
+    player.protagonistWeaponId = null;
+    player.statPoints = 0;
+  }
+
+  if (!player.absoluteCounter) player.absoluteCounter = assignAbsoluteCounter();
+  if (!player.equippedWeapon && player.isProtagonist) {
+    const weaponDef = getWeaponDef(player.protagonistWeaponId ?? 'WPN-IRON-SWORD');
+    if (weaponDef) player.equippedWeapon = createWeaponInventoryItem(weaponDef);
+  }
+
+  recalculatePlayerStats(player);
+  if (!player.name) player.name = `角色${index + 1}`;
+  return player;
+}
+
+function hydrateGameState(state: GameState): GameState {
+  state.pendingBodySkillDrop = state.pendingBodySkillDrop ?? null;
+  if (state.players) {
+    state.players = [
+      hydratePlayer(state.players[0], 0),
+      hydratePlayer(state.players[1], 1),
+    ];
+  }
+  return state;
 }

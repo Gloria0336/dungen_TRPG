@@ -1,4 +1,5 @@
 import type { InventoryItem, EnemyState, PlayerState } from '../types';
+import { getAllBodySkills } from '../data/skills';
 import { percentCheck, randomInt } from './diceEngine';
 import { CLASS_DB } from '../data/classes';
 import { POTION_DB } from '../data/potions';
@@ -43,6 +44,8 @@ export function rollItemDrop(floor: number): InventoryItem | null {
 
 export function processGrowth(player: PlayerState, floor: number): string[] {
   const changes: string[] = [];
+  if (player.isProtagonist) return changes;
+
   const classDef = CLASS_DB[player.classId];
   if (!classDef) return changes;
 
@@ -59,8 +62,12 @@ export function processGrowth(player: PlayerState, floor: number): string[] {
   const fm = 1 + Math.floor(floor / 5) * 0.3;
   const hpG = randomInt(2, Math.round(6 * fm));
   const spG = randomInt(2, Math.round(5 * fm));
-  player.maxHp += hpG; player.hp += hpG;
-  player.maxSp += spG; player.sp += spG;
+  player.baseMaxHp += hpG;
+  player.maxHp += hpG;
+  player.hp += hpG;
+  player.baseMaxSp += spG;
+  player.maxSp += spG;
+  player.sp += spG;
   changes.push(`最大HP +${hpG}`, `最大SP +${spG}`);
 
   // New skill
@@ -75,4 +82,13 @@ export function processGrowth(player: PlayerState, floor: number): string[] {
     }
   }
   return changes;
+}
+
+export function rollBodySkillDrop(floor: number): string | null {
+  const chance = Math.min(55, 28 + floor);
+  if (!percentCheck(chance, '身體技能掉落').success) return null;
+
+  const skills = getAllBodySkills();
+  const picked = skills[Math.floor(Math.random() * skills.length)];
+  return picked?.id ?? null;
 }

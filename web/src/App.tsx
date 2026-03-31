@@ -4,10 +4,11 @@ import type {
   GameState, GameConfig, CombatAction, CombatTurnResult,
   GameLogEntry, EventOption,
 } from './types';
-import { getAllClasses } from './data/classes';
+import { getAllCompanionClasses, PROTAGONIST_CLASS } from './data/classes';
+import { getBodySkillDef } from './data/skills';
 import {
-  createNewRun, initializePlayer, saveGame, loadGame,
-  hasSave, deleteSave, addLogEntry, createSnapshot,
+  createNewRun, initializePlayer, initializeProtagonist, saveGame, loadGame,
+  hasSave, deleteSave, addLogEntry, createSnapshot, synthesizeProtagonistSkills,
 } from './engine/stateManager';
 import {
   initCombat, processPlayerAction,
@@ -15,7 +16,7 @@ import {
 } from './engine/combatEngine';
 import { isAllyTargetingSkill, skillNeedsTargetSelection } from './engine/skillTargeting';
 import { generateExploreEncounter, processRestAction } from './engine/phaseEngine';
-import { generateGoldDrop, rollItemDrop, processGrowth } from './engine/lootEngine';
+import { generateGoldDrop, rollBodySkillDrop, rollItemDrop, processGrowth } from './engine/lootEngine';
 // shop engine used indirectly via phase transitions
 import { formatDiceResult } from './engine/diceEngine';
 import { requestNarrative, addNarrativeToHistory } from './ai/narrativeService';
@@ -52,12 +53,12 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [narrativeText, setNarrativeText] = useState('');
-  const [classSelection, setClassSelection] = useState<[string, string]>(['', '']);
+  const [classSelection, setClassSelection] = useState<[string, string]>(['CL-PROT', '']);
   const [playerNames, setPlayerNames] = useState<[string, string]>(['', '']);
   const [showPlayerPanel, setShowPlayerPanel] = useState(false);
   const [showLogPanel, setShowLogPanel] = useState(false);
   const [showFullLog, setShowFullLog] = useState(false);
-  const [initSubPhase, setInitSubPhase] = useState<'CLASS_SELECT' | 'BIO_INPUT' | 'BIO_GENERATE' | 'BIO_CONFIRM'>('CLASS_SELECT');
+  const [initSubPhase, setInitSubPhase] = useState<'PROTAGONIST_SETUP' | 'COMPANION_SELECT' | 'BIO_INPUT' | 'BIO_GENERATE' | 'BIO_CONFIRM'>('PROTAGONIST_SETUP');
   const [playerBios, setPlayerBios] = useState<[BioInput, BioInput]>([
     { race: '', age: '', appearance: '', background: '' },
     { race: '', age: '', appearance: '', background: '' }
@@ -138,7 +139,9 @@ export default function App() {
             <button className="btn btn-primary" onClick={() => {
               const gs = createNewRun();
               gs.nsgEnabled = config.nsgEnabled;
-              setInitSubPhase('CLASS_SELECT');
+              setInitSubPhase('PROTAGONIST_SETUP');
+              setClassSelection(['CL-PROT', '']);
+              setPlayerNames(['', '']);
               setPlayerBios([{ race: '', age: '', appearance: '', background: '' }, { race: '', age: '', appearance: '', background: '' }]);
               setBiographyText('');
               setState(gs); setScreen('game');
@@ -159,15 +162,21 @@ export default function App() {
   }
 
   if (!state) return null;
+  const protagonist = state.players?.find((player) => player.isProtagonist) ?? null;
 
-  // --- INIT: Class Selection ---
-  const handleClassConfirm = () => {
-    if (!classSelection[0] || !classSelection[1]) return;
-    const p1 = initializePlayer(classSelection[0], playerNames[0] || '角色1', 0);
-    const p2 = initializePlayer(classSelection[1], playerNames[1] || '角色2', 1);
-    state.players = [p1, p2];
+  const handleProtagonistConfirm = () => {
+    if (!playerNames[0].trim()) return;
+    setClassSelection((prev) => [PROTAGONIST_CLASS.id, prev[1]]);
+    setInitSubPhase('COMPANION_SELECT');
+  };
+
+  const handleCompanionConfirm = () => {
+    if (!classSelection[1]) return;
+    const protagonist = initializeProtagonist(playerNames[0] || '聖女候選人');
+    const companion = initializePlayer(classSelection[1], playerNames[1] || '同行者', 1);
+    state.players = [protagonist, companion];
     setInitSubPhase('BIO_INPUT');
-    addLogEntry(state, 'system', `職業與名稱選擇完成，請填寫角色身世。`);
+    addLogEntry(state, 'system', `主角與配角建立完成，請填寫角色身世。`);
     setState({ ...state });
   };
 
@@ -213,13 +222,84 @@ export default function App() {
 
     createSnapshot(state);
     setState({ ...state });
-    requestAINarrative(state, undefined, '冒險開始！兩名角色剛踏入地牢入口，空氣混雜著潮濕與古老石塵的味道。請結合這份角色簡歷描述開場場景。');
-    setInitSubPhase('CLASS_SELECT');
+    requestAINarrative(state, undefined, '冒險開始！聖女候選人與她的同伴剛踏入地牢入口，空氣混雜著潮濕與古老石塵的味道。請結合這份角色簡歷描述開場場景。');
+    setInitSubPhase('PROTAGONIST_SETUP');
   };
 
   const handleCustomDone = () => {
     state.phase = 'EXPLORE';
     addLogEntry(state, 'system', `進入第 ${state.floor} 層 - 探索階段`);
+    setState({ ...state });
+  };
+
+  const getProtagonist = () => state.players?.find((player) => player.isProtagonist) ?? null;
+
+  const queueBodySkillDrop = (skillId: string) => {
+    if (!state.players) return;
+    const protagonist = getProtagonist();
+    const skillDef = getBodySkillDef(skillId);
+    if (!protagonist || !skillDef) return;
+
+    const emptySlotIndex = protagonist.bodySkillSlots.findIndex((slot) => slot === null);
+    if (emptySlotIndex >= 0) {
+      protagonist.bodySkillSlots[emptySlotIndex as 0 | 1] = { skillId, level: 1 };
+      synthesizeProtagonistSkills(protagonist);
+      addLogEntry(state, 'system', `主角習得身體技能【${skillDef.name}】`);
+      return;
+    }
+
+    state.pendingBodySkillDrop = { skillId, sourceFloor: state.floor };
+    addLogEntry(state, 'system', `獲得身體技能【${skillDef.name}】，請在休整階段決定替換、升級或放棄。`);
+  };
+
+  const handleAllocateStatPoint = (target: 'str' | 'agi' | 'wil' | 'maxHp' | 'maxSp') => {
+    const protagonist = getProtagonist();
+    if (!state.players || !protagonist || protagonist.statPoints <= 0) return;
+
+    protagonist.statPoints -= 1;
+    if (target === 'str') protagonist.str += 1;
+    if (target === 'agi') protagonist.agi += 1;
+    if (target === 'wil') protagonist.wil += 1;
+    if (target === 'maxHp') {
+      protagonist.baseMaxHp += 8;
+      protagonist.hp += 8;
+    }
+    if (target === 'maxSp') {
+      protagonist.baseMaxSp += 10;
+      protagonist.sp += 10;
+    }
+
+    synthesizeProtagonistSkills(protagonist);
+    addLogEntry(state, 'system', `主角分配能力點：${target}`);
+    setState({ ...state });
+  };
+
+  const handleBodySkillDecision = (decision: 'replace' | 'upgrade' | 'discard', slotIndex?: 0 | 1) => {
+    const protagonist = getProtagonist();
+    const pendingSkillId = state.pendingBodySkillDrop?.skillId;
+    const pendingSkillDef = pendingSkillId ? getBodySkillDef(pendingSkillId) : undefined;
+    if (!protagonist || !pendingSkillId || !pendingSkillDef) return;
+
+    if (decision === 'replace' && slotIndex !== undefined) {
+      protagonist.bodySkillSlots[slotIndex] = { skillId: pendingSkillId, level: 1 };
+      addLogEntry(state, 'system', `主角以【${pendingSkillDef.name}】替換了槽位 ${slotIndex + 1} 的身體技能。`);
+    }
+
+    if (decision === 'upgrade' && slotIndex !== undefined && protagonist.bodySkillSlots[slotIndex]) {
+      protagonist.bodySkillSlots[slotIndex] = {
+        ...protagonist.bodySkillSlots[slotIndex]!,
+        level: protagonist.bodySkillSlots[slotIndex]!.level + 1,
+      };
+      const slotSkill = getBodySkillDef(protagonist.bodySkillSlots[slotIndex]!.skillId);
+      addLogEntry(state, 'system', `主角提升了【${slotSkill?.name ?? '未知技能'}】的等級。`);
+    }
+
+    if (decision === 'discard') {
+      addLogEntry(state, 'system', `主角放棄了【${pendingSkillDef.name}】。`);
+    }
+
+    state.pendingBodySkillDrop = null;
+    synthesizeProtagonistSkills(protagonist);
     setState({ ...state });
   };
 
@@ -322,6 +402,17 @@ export default function App() {
           if (p.isAlive && !p.isBD) {
             const growth = processGrowth(p, state.floor);
             if (growth.length) addLogEntry(state, 'system', `${p.name} 成長: ${growth.join(', ')}`);
+          }
+        }
+        const protagonist = getProtagonist();
+        if (protagonist && protagonist.isAlive && !protagonist.isBD) {
+          const gainedPoints = 3 + Math.floor(state.floor / 10);
+          protagonist.statPoints += gainedPoints;
+          addLogEntry(state, 'system', `主角獲得 ${gainedPoints} 點能力點，請在休整階段分配。`);
+
+          const bodySkillId = rollBodySkillDrop(state.floor);
+          if (bodySkillId) {
+            queueBodySkillDrop(bodySkillId);
           }
         }
         state.phase = 'REST';
@@ -464,7 +555,9 @@ export default function App() {
     if (window.confirm('確定要放棄當前進度並重新開始嗎？')) {
       deleteSave();
       setScreen('start');
-      setInitSubPhase('CLASS_SELECT');
+      setInitSubPhase('PROTAGONIST_SETUP');
+      setClassSelection(['CL-PROT', '']);
+      setPlayerNames(['', '']);
       setPlayerBios([{ race: '', age: '', appearance: '', background: '' }, { race: '', age: '', appearance: '', background: '' }]);
       setBiographyText('');
       setState(null);
@@ -544,6 +637,21 @@ export default function App() {
                     <div style={{ paddingLeft: '0.5rem' }}>上裝：{p.equippedUpper?.name || '無'}</div>
                     <div style={{ paddingLeft: '0.5rem' }}>下裝：{p.equippedLower?.name || '無'}</div>
                   </div>
+                  {p.isProtagonist && (
+                    <div className="text-sm text-dim" style={{ marginTop: '0.3rem' }}>
+                      <div style={{ color: 'var(--text-secondary)' }}>主角技能：</div>
+                      <div style={{ paddingLeft: '0.5rem' }}>能力點：{p.statPoints}</div>
+                      <div style={{ paddingLeft: '0.5rem' }}>
+                        武器技能：{p.weaponSkillSlots.length > 0 ? p.weaponSkillSlots.map(skill => skill.name).join(' / ') : '無'}
+                      </div>
+                      <div style={{ paddingLeft: '0.5rem' }}>
+                        身體槽 1：{p.bodySkillSlots[0] ? `${getBodySkillDef(p.bodySkillSlots[0].skillId)?.name ?? p.bodySkillSlots[0].skillId} Lv.${p.bodySkillSlots[0].level}` : '空'}
+                      </div>
+                      <div style={{ paddingLeft: '0.5rem' }}>
+                        身體槽 2：{p.bodySkillSlots[1] ? `${getBodySkillDef(p.bodySkillSlots[1].skillId)?.name ?? p.bodySkillSlots[1].skillId} Lv.${p.bodySkillSlots[1].level}` : '空'}
+                      </div>
+                    </div>
+                  )}
                   {p.statusEffects.length > 0 && (
                     <div className="text-sm" style={{ marginTop: '0.3rem' }}>
                       <div style={{ color: 'var(--text-secondary)' }}>狀態效果：</div>
@@ -595,39 +703,66 @@ export default function App() {
           </div>
 
           <div className="narrative-area" ref={scrollRef}>
-            {/* INIT: Class selection */}
-            {state.phase === 'INIT' && initSubPhase === 'CLASS_SELECT' && (
+            {state.phase === 'INIT' && initSubPhase === 'PROTAGONIST_SETUP' && (
               <div className="narrative-entry system">
-                <p>你踏入地牢入口，空氣混雜著潮濕與古老石塵的味道。</p>
-                <p>請為兩名角色選擇職業：</p>
-                {[0, 1].map(idx => (
-                  <div key={idx} style={{ marginTop: '0.5rem' }}>
-                    <div className="text-sm" style={{ marginBottom: '0.3rem' }}>角色 {idx + 1} 名稱：</div>
-                    <input
-                      className="btn btn-sm" style={{ width: '150px', background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '0.3rem 0.5rem' }}
-                      placeholder={`角色${idx + 1}`}
-                      value={playerNames[idx]}
-                      onChange={e => { const n = [...playerNames] as [string, string]; n[idx] = e.target.value; setPlayerNames(n); }}
-                    />
-                    <div className="class-grid">
-                      {getAllClasses().map(cls => (
-                        <div
-                          key={cls.id}
-                          className={`class-card ${classSelection[idx] === cls.id ? 'selected' : ''}`}
-                          onClick={() => { const s = [...classSelection] as [string, string]; s[idx] = cls.id; setClassSelection(s); }}
-                        >
-                          <h3>{cls.className}</h3>
-                          <div className="tags">{cls.roleTags.join(' / ')}</div>
-                          <div className="stats">STR:{cls.autoStats.STR} AGI:{cls.autoStats.AGI} WIL:{cls.autoStats.WIL}</div>
-                          <div className="stats">HP:{cls.baseHp} SP:{cls.baseSp}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-                <button className="btn btn-primary" style={{ marginTop: '1rem' }} onClick={handleClassConfirm} disabled={!classSelection[0] || !classSelection[1]}>
-                  下一步：設定角色身世
+                <p>帝國教會將你選為聖女候選人，命你深入地牢討伐魔物。</p>
+                <p>主角職業固定，先為她命名後再挑選同行配角。</p>
+                <div className="class-card selected" style={{ marginTop: '0.8rem' }}>
+                  <h3>{PROTAGONIST_CLASS.className}</h3>
+                  <div className="tags">{PROTAGONIST_CLASS.roleTags.join(' / ')}</div>
+                  <div className="stats">STR:0 AGI:0 WIL:0</div>
+                  <div className="stats">HP:60 SP:80</div>
+                  <div className="stats">初始武器：鐵劍</div>
+                </div>
+                <div style={{ marginTop: '0.8rem' }}>
+                  <div className="text-sm" style={{ marginBottom: '0.3rem' }}>主角名稱：</div>
+                  <input
+                    className="btn btn-sm"
+                    style={{ width: '180px', background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '0.3rem 0.5rem' }}
+                    placeholder="聖女候選人"
+                    value={playerNames[0]}
+                    onChange={e => { const n = [...playerNames] as [string, string]; n[0] = e.target.value; setPlayerNames(n); }}
+                  />
+                </div>
+                <button className="btn btn-primary" style={{ marginTop: '1rem' }} onClick={handleProtagonistConfirm} disabled={!playerNames[0].trim()}>
+                  下一步：選擇配角
                 </button>
+              </div>
+            )}
+
+            {state.phase === 'INIT' && initSubPhase === 'COMPANION_SELECT' && (
+              <div className="narrative-entry system">
+                <p>你可以攜帶一名同伴同行。請選擇配角職業與名稱。</p>
+                <div className="text-sm" style={{ marginBottom: '0.3rem' }}>配角名稱：</div>
+                <input
+                  className="btn btn-sm"
+                  style={{ width: '180px', background: 'var(--bg-glass)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '0.3rem 0.5rem' }}
+                  placeholder="同行者"
+                  value={playerNames[1]}
+                  onChange={e => { const n = [...playerNames] as [string, string]; n[1] = e.target.value; setPlayerNames(n); }}
+                />
+                <div className="class-grid" style={{ marginTop: '0.8rem' }}>
+                  {getAllCompanionClasses().map(cls => (
+                    <div
+                      key={cls.id}
+                      className={`class-card ${classSelection[1] === cls.id ? 'selected' : ''}`}
+                      onClick={() => { const s = [...classSelection] as [string, string]; s[1] = cls.id; setClassSelection(s); }}
+                    >
+                      <h3>{cls.className}</h3>
+                      <div className="tags">{cls.roleTags.join(' / ')}</div>
+                      <div className="stats">STR:{cls.autoStats.STR} AGI:{cls.autoStats.AGI} WIL:{cls.autoStats.WIL}</div>
+                      <div className="stats">HP:{cls.baseHp} SP:{cls.baseSp}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                  <button className="btn" onClick={() => setInitSubPhase('PROTAGONIST_SETUP')}>
+                    ◀ 返回
+                  </button>
+                  <button className="btn btn-primary" onClick={handleCompanionConfirm} disabled={!classSelection[1]}>
+                    下一步：設定角色身世
+                  </button>
+                </div>
               </div>
             )}
 
@@ -746,7 +881,7 @@ export default function App() {
                         <button className="action-btn" disabled={isStreaming} onClick={() => setActionState({ type: 'attack_target' })}>
                           ⚔️ 攻擊
                         </button>
-                        {currentPlayer.skills.filter(s => (!s.currentCooldown || s.currentCooldown === 0) && currentPlayer.sp >= s.spCost).map(s => (
+                        {currentPlayer.skills.filter(s => s.activation !== 'passive' && (!s.currentCooldown || s.currentCooldown === 0) && currentPlayer.sp >= s.spCost).map(s => (
                           <button key={s.id} className="action-btn skill" disabled={isStreaming} onClick={() => {
                             if (!skillNeedsTargetSelection(s)) {
                               handleCombatAction({ type: 'skill', skillId: s.id, playerIndex: pIdx });
@@ -830,7 +965,45 @@ export default function App() {
                 ))}
               </div>
             )}
-            {state.phase === 'REST' && (
+            {state.phase === 'REST' && protagonist && protagonist.statPoints > 0 && (
+              <div className="action-buttons">
+                <div className="text-sm" style={{ width: '100%', marginBottom: '0.3rem', color: 'var(--sp-color)' }}>
+                  主角有 {protagonist.statPoints} 點能力點待分配
+                </div>
+                <button className="action-btn skill" disabled={isStreaming} onClick={() => handleAllocateStatPoint('str')}>STR +1</button>
+                <button className="action-btn skill" disabled={isStreaming} onClick={() => handleAllocateStatPoint('agi')}>AGI +1</button>
+                <button className="action-btn skill" disabled={isStreaming} onClick={() => handleAllocateStatPoint('wil')}>WIL +1</button>
+                <button className="action-btn skill" disabled={isStreaming} onClick={() => handleAllocateStatPoint('maxHp')}>Max HP +8</button>
+                <button className="action-btn skill" disabled={isStreaming} onClick={() => handleAllocateStatPoint('maxSp')}>Max SP +10</button>
+              </div>
+            )}
+            {state.phase === 'REST' && protagonist && protagonist.statPoints <= 0 && state.pendingBodySkillDrop && (
+              <div className="action-buttons">
+                <div className="text-sm" style={{ width: '100%', marginBottom: '0.3rem', color: 'var(--sp-color)' }}>
+                  獲得身體技能：{getBodySkillDef(state.pendingBodySkillDrop.skillId)?.name ?? state.pendingBodySkillDrop.skillId}
+                </div>
+                <button className="action-btn skill" disabled={isStreaming} onClick={() => handleBodySkillDecision('replace', 0)}>
+                  替換槽 1
+                </button>
+                <button className="action-btn skill" disabled={isStreaming} onClick={() => handleBodySkillDecision('replace', 1)}>
+                  替換槽 2
+                </button>
+                {protagonist.bodySkillSlots[0] && (protagonist.bodySkillSlots[0]!.level < (getBodySkillDef(protagonist.bodySkillSlots[0]!.skillId)?.maxLevel ?? 0)) && (
+                  <button className="action-btn skill" disabled={isStreaming} onClick={() => handleBodySkillDecision('upgrade', 0)}>
+                    升級槽 1
+                  </button>
+                )}
+                {protagonist.bodySkillSlots[1] && (protagonist.bodySkillSlots[1]!.level < (getBodySkillDef(protagonist.bodySkillSlots[1]!.skillId)?.maxLevel ?? 0)) && (
+                  <button className="action-btn skill" disabled={isStreaming} onClick={() => handleBodySkillDecision('upgrade', 1)}>
+                    升級槽 2
+                  </button>
+                )}
+                <button className="action-btn" disabled={isStreaming} onClick={() => handleBodySkillDecision('discard')}>
+                  放棄
+                </button>
+              </div>
+            )}
+            {state.phase === 'REST' && (!protagonist || (protagonist.statPoints <= 0 && !state.pendingBodySkillDrop)) && (
               <div className="action-buttons">
                 {[1, 2, 3, 4, 5].map(i => {
                   const remaining = Math.max(0, 3 - state.exploreRestCount);

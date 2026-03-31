@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   PlayerState, EnemyState, CombatState, CombatTurnResult,
   CombatAction, TurnAction, DiceResult, MonsterSkill, GameState,
   StatusEffect,
@@ -86,7 +86,40 @@ export function calculateFinalDamage(
 /** Calculate DR% for a player based on durability tiers */
 export function calculateDR(player: PlayerState): number {
   const classDef = CLASS_DB[player.classId];
-  if (!classDef) return 0;
+  if (player.isProtagonist || !classDef) {
+    let drU = 0;
+    let drL = 0;
+
+    if (player.equippedUpper?.drU) {
+      const eq = player.equippedUpper;
+      const dur = eq.durability ?? 100;
+      const steps = eq.tierSteps;
+      let value = eq.drU ?? 0;
+      if (steps) {
+        if (dur <= 30) value += steps['30_0'];
+        else if (dur <= 59) value += steps['59_30'];
+        else if (dur <= 79) value += steps['79_60'];
+        else value += steps['100_80'];
+      }
+      drU += value;
+    }
+
+    if (player.equippedLower?.drL) {
+      const eq = player.equippedLower;
+      const dur = eq.durability ?? 100;
+      const steps = eq.tierSteps;
+      let value = eq.drL ?? 0;
+      if (steps) {
+        if (dur <= 30) value += steps['30_0'];
+        else if (dur <= 59) value += steps['59_30'];
+        else if (dur <= 79) value += steps['79_60'];
+        else value += steps['100_80'];
+      }
+      drL += value;
+    }
+
+    return Math.max(0, drU + drL + getPassiveDRBonus(player));
+  }
 
   const profile = classDef.durabilityDRProfile;
   let drU = profile.drU;
@@ -118,7 +151,7 @@ export function calculateDR(player: PlayerState): number {
     drU = Math.max(drU, eqDR);
   }
 
-  return Math.max(0, drU + drL);
+  return Math.max(0, drU + drL + getPassiveDRBonus(player));
 }
 
 /** Apply durability damage to player */
@@ -131,21 +164,26 @@ export function applyDurabilityDamage(
   let lowerChange = 0;
 
   switch (target) {
-    case '上':
+    case 'upper':
+    case 'UPPER':
       upperChange = -(amount ?? 5) * 1.3;
       player.upperDurability = Math.max(0, player.upperDurability + upperChange);
       break;
-    case '下':
+    case 'lower':
+    case 'LOWER':
       lowerChange = -(amount ?? 5) * 1.3;
       player.lowerDurability = Math.max(0, player.lowerDurability + lowerChange);
       break;
-    case '雙':
+    case 'both':
+    case 'BOTH':
       upperChange = -(amount ?? 3) * 1.3;
       lowerChange = -(amount ?? 3) * 1.3;
       player.upperDurability = Math.max(0, player.upperDurability + upperChange);
       player.lowerDurability = Math.max(0, player.lowerDurability + lowerChange);
       break;
-    case '無':
+    case 'none':
+    case 'NONE':
+    default:
       break;
   }
   
@@ -205,7 +243,7 @@ export function applyEquipmentSideEffects(
         }
         
         if (changeHandled) {
-           const logMsg = `[裝備副作用 - ${eq.name}] ${effect.description}`;
+           const logMsg = `[鋆??臭???- ${eq.name}] ${effect.description}`;
            resultObj.diceResults.push({
              purpose: '裝備副作用',
              threshold: 0, roll: 0, success: true,
@@ -225,6 +263,44 @@ export function getStatusEffectMod(
   return effects
     .filter(se => se.type === 'statMod' && se.targetStat === stat)
     .reduce((sum, se) => sum + (se.amount ?? 0), 0);
+}
+
+function getBodySkillLevel(player: PlayerState, skillId: string): number {
+  return player.bodySkillSlots.find((slot) => slot?.skillId === skillId)?.level ?? 0;
+}
+
+function getPlayerSPWeightMod(player: PlayerState): number {
+  if (player.isProtagonist) {
+    if (player.sp >= player.maxSp * 0.75) return 5;
+    if (player.sp >= player.maxSp * 0.3) return 0;
+    return -8;
+  }
+
+  const classDef = CLASS_DB[player.classId];
+  return classDef ? getSPWeightMod(player.sp, classDef.spWeightRule) : 0;
+}
+
+function getPassiveDRBonus(player: PlayerState): number {
+  return player.isProtagonist ? getBodySkillLevel(player, 'BSK-IRON-BODY') * 4 : 0;
+}
+
+function getPassiveEvadeBonus(player: PlayerState): number {
+  return player.isProtagonist ? getBodySkillLevel(player, 'BSK-SWIFT-STEP') * 12 : 0;
+}
+
+function getPassiveAmpBonus(player: PlayerState): number {
+  if (!player.isProtagonist) return 0;
+  const furyLevel = getBodySkillLevel(player, 'BSK-BATTLE-FURY');
+  if (furyLevel <= 0) return 0;
+  return player.hp <= player.maxHp / 2 ? furyLevel * 8 : 0;
+}
+
+function getPassiveSpRegen(player: PlayerState): number {
+  return player.isProtagonist ? getBodySkillLevel(player, 'BSK-MANA-FLOW') * 4 : 0;
+}
+
+function getPlayerTotalAmp(player: PlayerState): number {
+  return player.ampPercent + getPassiveAmpBonus(player);
 }
 
 type TurnTargetRef =
@@ -280,7 +356,7 @@ function applyStatusEffect(
   }
 
   if (effect.type === 'buff' && effect.targetStat === 'skillDr' && effect.amount && typeof target.skillDrPercent === 'number') {
-    target.skillDrPercent = Math.max(0, target.skillDrPercent + effect.amount);
+    target.skillDrPercent = Math.max(-80, Math.min(80, target.skillDrPercent + effect.amount));
   }
 }
 
@@ -301,18 +377,122 @@ function removeExpiredStatusEffect(
   }
 
   if (effect.type === 'buff' && effect.targetStat === 'skillDr' && effect.amount && typeof target.skillDrPercent === 'number') {
-    target.skillDrPercent = Math.max(0, target.skillDrPercent - effect.amount);
+    target.skillDrPercent = Math.max(-80, Math.min(80, target.skillDrPercent - effect.amount));
+  }
+}
+
+function makeAdjustedStatusEffect(
+  effect: NonNullable<PlayerState['skills'][number]['formula']>['selfEffect'],
+  combat: CombatState | null | undefined,
+  target: TurnTargetRef,
+): StatusEffect | null {
+  if (!effect) return null;
+  return {
+    ...effect,
+    duration: adjustDurationForTurnOrder(effect.duration, combat, target),
+  };
+}
+
+function applyFormulaSelfEffects(
+  skill: PlayerState['skills'][number],
+  player: PlayerState,
+  result: CombatTurnResult,
+  combat: CombatState | null | undefined,
+  playerIndex: number,
+): void {
+  const formula = skill.formula;
+  if (!formula) return;
+
+  if (formula.baseHeal) {
+    const scaling = formula.healScalingStat ? player[formula.healScalingStat] * (formula.healScalingFactor ?? 0) : 0;
+    const healAmount = Math.round(formula.baseHeal + scaling);
+    const beforeHp = player.hp;
+    player.hp = Math.min(player.maxHp, player.hp + healAmount);
+    result.hpChange += player.hp - beforeHp;
+  }
+
+  if (formula.restoreSp) {
+    const beforeSp = player.sp;
+    player.sp = Math.min(player.maxSp, player.sp + formula.restoreSp);
+    result.spChange += player.sp - beforeSp;
+  }
+
+  const selfEffect = makeAdjustedStatusEffect(formula.selfEffect, combat, { playerIndex });
+  if (selfEffect) applyStatusEffect(player, selfEffect);
+}
+
+function executeFormulaAttack(
+  skill: PlayerState['skills'][number],
+  player: PlayerState,
+  target: EnemyState,
+  spMod: number,
+  combat: CombatState | null | undefined,
+  result: CombatTurnResult,
+): void {
+  const formula = skill.formula ?? {};
+  const baseHit = parseBaseHit(skill.hitRule);
+  const hitMod = getStatusEffectMod(player.statusEffects, 'hit');
+  const hitResult = hitCheck(
+    baseHit,
+    spMod,
+    0,
+    hitMod + (formula.hitBonus ?? 0),
+    `${player.name}: ${skill.name} ?賭葉瑼Ｗ?`,
+  );
+  result.diceResults.push(hitResult);
+  if (!hitResult.success) return;
+
+  const atk = calculateATK(player) + (formula.flatDamageBonus ?? 0);
+  const rawDmg = Math.round(calculateRawDamage(atk) * (formula.damageMultiplier ?? 1.25));
+  const finalDmg = calculateFinalDamage(
+    rawDmg,
+    getPlayerTotalAmp(player),
+    formula.ignoreDefense ? 0 : target.drPercent,
+    formula.ignoreDefense ? 0 : target.skillDrPercent,
+    formula.ignoreDefense ? 0 : target.flatDr,
+  );
+
+  result.damageDealt = finalDmg;
+  target.hp = Math.max(0, target.hp - finalDmg);
+  if (target.hp <= 0) target.isAlive = false;
+
+  if (formula.lifeStealPercent) {
+    const heal = Math.max(1, Math.round(finalDmg * (formula.lifeStealPercent / 100)));
+    const beforeHp = player.hp;
+    player.hp = Math.min(player.maxHp, player.hp + heal);
+    result.hpChange += player.hp - beforeHp;
+  }
+
+  if (formula.restoreSp) {
+    const beforeSp = player.sp;
+    player.sp = Math.min(player.maxSp, player.sp + formula.restoreSp);
+    result.spChange += player.sp - beforeSp;
+  }
+
+  const targetEffect = makeAdjustedStatusEffect(formula.targetEffect, combat, { enemyId: target.instanceId });
+  if (targetEffect) applyStatusEffect(target, targetEffect);
+
+  if (formula.controlTurns) {
+    const controlChance = 35 + player.wil * 2 + (skill.level ?? 1) * 5;
+    const controlResult = percentCheck(controlChance - target.controlResistCount * 20, '?批瑼Ｗ?');
+    result.diceResults.push(controlResult);
+    if (controlResult.success) {
+      target.isControlled = true;
+      target.controlTurns = adjustDurationForTurnOrder(formula.controlTurns, combat, { enemyId: target.instanceId });
+      target.controlSource = `${player.name}[${skill.name}]`;
+      target.controlResistCount++;
+      result.controlApplied = true;
+      result.controlDuration = target.controlTurns;
+    }
   }
 }
 
 /** Get DES/SP impact amount by level */
 function getImpactAmount(level: MonsterSkill['desSpImpactLevel']): number {
-  switch (level) {
-    case '低': return randomInt(3, 8);
-    case '中': return randomInt(8, 15);
-    case '高': return randomInt(15, 25);
-    case '極高': return randomInt(25, 40);
-  }
+  if (level === 'low') return randomInt(3, 8);
+  if (level === 'high') return randomInt(15, 25);
+  if (level === 'extreme') return randomInt(25, 40);
+  return randomInt(8, 15);
 }
 
 /** Choose enemy action based on behavior rules */
@@ -339,10 +519,10 @@ export function chooseEnemyAction(
   let chosenSkill = availableSkills[0];
   const behaviorStr = enemy.behaviorRules.join(' ');
 
-  if (behaviorStr.includes('控制') && !target.p.isControlled) {
+  if (behaviorStr.includes('?批') && !target.p.isControlled) {
     const controlSkill = availableSkills.find((s) => s.control);
     if (controlSkill) chosenSkill = controlSkill;
-  } else if (behaviorStr.includes('控制') && target.p.isControlled) {
+  } else if (behaviorStr.includes('?批') && target.p.isControlled) {
     const damageSkill = availableSkills.find((s) => !s.control) ?? availableSkills[0];
     chosenSkill = damageSkill;
   }
@@ -387,16 +567,16 @@ export function processEnemyAttack(
 
   // Hit check
   const baseHit = skill.baseHit ?? parseBaseHit(skill.hitRule);
-  const isAutoHit = player.isControlled && skill.hitRule.includes('必中');
+  const isAutoHit = player.isControlled && skill.hitRule.includes('敹葉');
 
   let hitResult: DiceResult;
   if (isAutoHit) {
     hitResult = {
-      purpose: `${skill.name} 命中判定`,
+      purpose: `${skill.name} ?賭葉?文?`,
       threshold: 100,
       roll: 1,
       success: true,
-      effects: '目標被控制中，自動命中',
+      effects: '目標被控制，攻擊自動命中',
     };
   } else {
     // Player's hit debuff makes enemy more likely to land
@@ -407,7 +587,7 @@ export function processEnemyAttack(
       0,
       counterHitMod,
       enemyHitMod - playerHitDebuff,
-      `${enemy.templateName}: ${skill.name} 命中判定`
+      `${enemy.templateName}: ${skill.name} ?賭葉?文?`
     );
   }
   result.diceResults.push(hitResult);
@@ -416,10 +596,10 @@ export function processEnemyAttack(
     // Check player dodge (apply evade status effect mod)
     const evadeMod = getStatusEffectMod(player.statusEffects, 'evade');
     const evadeResult = evadeCheck(
-      Math.floor(player.agi * 3) + evadeMod,
+      Math.floor(player.agi * 3) + evadeMod + getPassiveEvadeBonus(player),
       player.isControlled,
       softPenalty,
-      `${player.name} 閃避判定`
+      `${player.name} ??文?`
     );
     result.diceResults.push(evadeResult);
     if (evadeResult.success) {
@@ -474,7 +654,7 @@ export function processEnemyAttack(
       result.controlDuration = controlDuration;
       player.isControlled = true;
       player.controlTurns = controlDuration;
-      player.controlSource = `${enemy.templateName}的[${skill.name}]`;
+      player.controlSource = `${enemy.templateName}?${skill.name}]`;
     }
 
     // Special Effects
@@ -486,7 +666,7 @@ export function processEnemyAttack(
             : effect.duration;
         if (effect.type === 'statMod' && effect.targetStat && effect.amount) {
           applyStatusEffect(player, {
-            name: `${skill.name}附加效果`,
+            name: `${skill.name}????`,
             duration: adjustedDuration,
             effect: `${effect.targetStat.toUpperCase()} ${effect.amount > 0 ? '+' : ''}${effect.amount}`,
             type: effect.type,
@@ -496,7 +676,7 @@ export function processEnemyAttack(
         }
         if (effect.type === 'dot' && effect.targetStat === 'hp' && effect.amount) {
           applyStatusEffect(player, {
-            name: `${skill.name}????`,
+            name: `${skill.name}??????`,
             duration: adjustedDuration,
             effect: `HP ${effect.amount}`,
             type: effect.type,
@@ -546,12 +726,11 @@ function processPlayerActionSingle(
   };
 
   if (player.isControlled) {
-    result.action = '被控制，無法行動';
+    result.action = '鋡急?塚??⊥?銵?';
     return result;
   }
 
-  const classDef = CLASS_DB[player.classId];
-  const spMod = classDef ? getSPWeightMod(player.sp, classDef.spWeightRule) : 0;
+  const spMod = getPlayerSPWeightMod(player);
 
   switch (action.type) {
     case 'attack': {
@@ -564,7 +743,7 @@ function processPlayerActionSingle(
 
       const atk = calculateATK(player);
       const hitMod = getStatusEffectMod(player.statusEffects, 'hit');
-      const hitResult = hitCheck(75, spMod, 0, hitMod, `${player.name} 普攻命中判定`);
+      const hitResult = hitCheck(75, spMod, 0, hitMod, `${player.name} ?格?賭葉?文?`);
       result.diceResults.push(hitResult);
 
       if (hitResult.success) {
@@ -573,7 +752,7 @@ function processPlayerActionSingle(
         
         const finalDmg = calculateFinalDamage(
           rawDmg,
-          player.ampPercent,
+          getPlayerTotalAmp(player),
           target.drPercent,
           target.skillDrPercent,
           target.flatDr
@@ -594,17 +773,17 @@ function processPlayerActionSingle(
       const target = enemies.find((e) => e.instanceId === action.targetId && e.isAlive);
 
       result.action = skill.name;
-      result.targetName = target?.templateName ?? '自身';
+      result.targetName = target?.templateName ?? '?芾澈';
 
       // Check SP cost
       if (player.sp < skill.spCost) {
-        result.action = `${skill.name} - SP 不足！`;
+        result.action = `${skill.name} - SP 不足`;
         return result;
       }
 
       // Check cooldown
       if (skill.currentCooldown && skill.currentCooldown > 0) {
-        result.action = `${skill.name} - 冷卻中（剩餘 ${skill.currentCooldown} 回合）`;
+        result.action = `${skill.name} - 冷卻中 ${skill.currentCooldown} 回合`;
         return result;
       }
 
@@ -617,10 +796,24 @@ function processPlayerActionSingle(
         skill.currentCooldown = skill.cooldown;
       }
 
+      if (skill.formula && skill.category !== 'class') {
+        if (skill.targeting === 'self') {
+          applyFormulaSelfEffects(skill, player, result, state.combat, action.playerIndex);
+          applyEquipmentSideEffects(player, 'onSkill', result);
+          break;
+        }
+
+        if (target) {
+          executeFormulaAttack(skill, player, target, spMod, state.combat, result);
+          applyEquipmentSideEffects(player, 'onSkill', result);
+        }
+        break;
+      }
+
       // Auto-hit skills (heals, buffs)
-      if (skill.hitRule.includes('必中') || skill.hitRule.includes('自身')) {
+      if (skill.hitRule.includes('敹葉') || skill.hitRule.includes('?芾澈')) {
         // Process effect
-        if (skill.effectSummary.includes('回復HP') || skill.effectSummary.includes('回復')) {
+        if (skill.effectSummary.includes('?儔HP') || skill.effectSummary.includes('?儔')) {
           const healAmount = randomInt(15, 30);
           player.hp = Math.min(player.maxHp, player.hp + healAmount);
           result.hpChange = healAmount;
@@ -628,7 +821,7 @@ function processPlayerActionSingle(
         if (skill.effectSummary.includes('DR')) {
           const duration = adjustDurationForTurnOrder(1, state.combat, { playerIndex: action.playerIndex });
           applyStatusEffect(player, {
-            name: `${skill.name}護體`,
+            name: `${skill.name}霅琿?`,
             duration,
             effect: 'SkillDR% +15',
             type: 'buff',
@@ -636,12 +829,12 @@ function processPlayerActionSingle(
             amount: 15,
           });
         }
-        if (skill.effectSummary.includes('閃避')) {
+        if (skill.effectSummary.includes('?')) {
           const duration = adjustDurationForTurnOrder(1, state.combat, { playerIndex: action.playerIndex });
           applyStatusEffect(player, {
-            name: '閃避提升',
+            name: '???',
             duration,
-            effect: '閃避率 +30%',
+            effect: '???+30%',
             type: 'statMod',
             targetStat: 'evade',
             amount: 30,
@@ -654,7 +847,7 @@ function processPlayerActionSingle(
       if (target) {
         const baseHit = parseBaseHit(skill.hitRule);
         const hitMod = getStatusEffectMod(player.statusEffects, 'hit');
-        const hitResult = hitCheck(baseHit, spMod, 0, hitMod, `${player.name}: ${skill.name} 命中判定`);
+        const hitResult = hitCheck(baseHit, spMod, 0, hitMod, `${player.name}: ${skill.name} ?賭葉?文?`);
         result.diceResults.push(hitResult);
 
         if (hitResult.success) {
@@ -665,7 +858,7 @@ function processPlayerActionSingle(
           
           const finalDmg = calculateFinalDamage(
             rawDmg,
-            player.ampPercent,
+            getPlayerTotalAmp(player),
             target.drPercent,
             target.skillDrPercent,
             target.flatDr
@@ -676,17 +869,17 @@ function processPlayerActionSingle(
           if (target.hp <= 0) target.isAlive = false;
 
           // Control effect on enemy
-          if (skill.effectSummary.includes('控制')) {
+          if (skill.effectSummary.includes('?批')) {
             const controlChance = 30 + (player.wil * 2);
             const controlResult = percentCheck(
               controlChance - (target.controlResistCount * 20),
-              '控制判定'
+              '?批?文?'
             );
             result.diceResults.push(controlResult);
             if (controlResult.success) {
               target.isControlled = true;
               target.controlTurns = adjustDurationForTurnOrder(1, state.combat, { enemyId: target.instanceId });
-              target.controlSource = `${player.name}的[${skill.name}]`;
+              target.controlSource = `${player.name}?${skill.name}]`;
               target.controlResistCount++;
               result.controlApplied = true;
               result.controlDuration = target.controlTurns;
@@ -696,9 +889,9 @@ function processPlayerActionSingle(
           if (skill.id === 'SK-ASSN-POIS') {
             const duration = adjustDurationForTurnOrder(3, state.combat, { enemyId: target.instanceId });
             applyStatusEffect(target, {
-              name: `${skill.name}中毒`,
+              name: `${skill.name}銝剜?`,
               duration,
-              effect: '每回合 HP -10',
+              effect: '瘥???HP -10',
               type: 'dot',
               targetStat: 'hp',
               amount: -10,
@@ -708,9 +901,9 @@ function processPlayerActionSingle(
           if (skill.id === 'SK-DIVA-SONG') {
             const duration = adjustDurationForTurnOrder(1, state.combat, { enemyId: target.instanceId });
             applyStatusEffect(target, {
-              name: `${skill.name}弱化`,
+              name: `${skill.name}撘勗?`,
               duration,
-              effect: '命中 -5',
+              effect: '?賭葉 -5',
               type: 'statMod',
               targetStat: 'hit',
               amount: -5,
@@ -724,12 +917,12 @@ function processPlayerActionSingle(
     }
 
     case 'defend': {
-      result.action = '防禦';
-      result.targetName = '自身';
+      result.action = '?脩戌';
+      result.targetName = '?芾澈';
       // Temporary Skill DR boost for this round
       const duration = adjustDurationForTurnOrder(1, state.combat, { playerIndex: action.playerIndex });
       applyStatusEffect(player, {
-        name: '防禦姿態',
+        name: '?脩戌憪踵?',
         duration,
         effect: 'SkillDR% +15',
         type: 'buff',
@@ -747,18 +940,18 @@ function processPlayerActionSingle(
       );
       if (!item) return result;
 
-      result.action = `使用 ${item.name}`;
-      result.targetName = '自身';
+      result.action = `雿輻 ${item.name}`;
+      result.targetName = '?芾澈';
 
       // Apply potion effects
       if (item.type === 'potion') {
         // Simple HP/SP recovery based on item name
-        if (item.name.includes('生命') || item.name.includes('HP')) {
+        if (item.name.includes('?') || item.name.includes('HP')) {
           const heal = 20;
           player.hp = Math.min(player.maxHp, player.hp + heal);
           result.hpChange = heal;
         }
-        if (item.name.includes('精神') || item.name.includes('SP')) {
+        if (item.name.includes('蝎曄?') || item.name.includes('SP')) {
           player.sp = Math.min(player.maxSp, player.sp + 30);
           result.spChange = 30;
           player.des = Math.max(0, player.des - 5);
@@ -774,10 +967,10 @@ function processPlayerActionSingle(
     }
 
     case 'flee': {
-      result.action = '嘗試逃跑';
+      result.action = '?岫??';
       const fleeResult = percentCheck(
         30 + player.agi * 3,
-        '逃跑判定'
+        '???文?'
       );
       result.diceResults.push(fleeResult);
       break;
@@ -813,7 +1006,22 @@ function applySupportSkillEffect(
   combat: CombatState | null | undefined,
   targetPlayerIndex: number
 ): void {
-  if (skill.effectSummary.includes('回復HP') || skill.effectSummary.includes('回復')) {
+  if (skill.formula && skill.category !== 'class') {
+    const formula = skill.formula;
+    if (formula.baseHeal) {
+      const scaling = formula.healScalingStat ? target[formula.healScalingStat] * (formula.healScalingFactor ?? 0) : 0;
+      const healAmount = Math.round(formula.baseHeal + scaling);
+      const beforeHp = target.hp;
+      target.hp = Math.min(target.maxHp, target.hp + healAmount);
+      result.hpChange = target.hp - beforeHp;
+    }
+
+    const effect = makeAdjustedStatusEffect(formula.selfEffect, combat, { playerIndex: targetPlayerIndex });
+    if (effect) applyStatusEffect(target, effect);
+    return;
+  }
+
+  if (skill.effectSummary.includes('?儔HP') || skill.effectSummary.includes('?儔')) {
     const beforeHp = target.hp;
     const healAmount = randomInt(15, 30);
     target.hp = Math.min(target.maxHp, target.hp + healAmount);
@@ -823,7 +1031,7 @@ function applySupportSkillEffect(
   if (skill.effectSummary.includes('DR')) {
     const duration = adjustDurationForTurnOrder(1, combat, { playerIndex: targetPlayerIndex });
     applyStatusEffect(target, {
-      name: `${skill.name}護體`,
+      name: `${skill.name}霅琿?`,
       duration,
       effect: 'SkillDR% +15',
       type: 'buff',
@@ -832,12 +1040,12 @@ function applySupportSkillEffect(
     });
   }
 
-  if (skill.effectSummary.includes('閃避') || skill.effectSummary.includes('迴避')) {
+  if (skill.effectSummary.includes('?') || skill.effectSummary.includes('餈湧')) {
     const duration = adjustDurationForTurnOrder(1, combat, { playerIndex: targetPlayerIndex });
     applyStatusEffect(target, {
-      name: `${skill.name}迴避提升`,
+      name: `${skill.name}餈湧??`,
       duration,
-      effect: '迴避率+30%',
+      effect: '餈湧??30%',
       type: 'statMod',
       targetStat: 'evade',
       amount: 30,
@@ -857,9 +1065,14 @@ function buildEnemyAllSkillResult(
   result.action = skill.name;
   result.targetName = target.templateName;
 
+  if (skill.formula && skill.category !== 'class') {
+    executeFormulaAttack(skill, player, target, spMod, combat, result);
+    return result;
+  }
+
   const baseHit = parseBaseHit(skill.hitRule);
   const hitMod = getStatusEffectMod(player.statusEffects, 'hit');
-  const hitResult = hitCheck(baseHit, spMod, 0, hitMod, `${player.name}: ${skill.name} 命中判定`);
+  const hitResult = hitCheck(baseHit, spMod, 0, hitMod, `${player.name}: ${skill.name} ?賭葉?文?`);
   result.diceResults.push(hitResult);
 
   if (!hitResult.success) return result;
@@ -871,7 +1084,7 @@ function buildEnemyAllSkillResult(
 
   const finalDmg = calculateFinalDamage(
     rawDmg,
-    player.ampPercent,
+    getPlayerTotalAmp(player),
     target.drPercent,
     target.skillDrPercent,
     target.flatDr
@@ -881,17 +1094,17 @@ function buildEnemyAllSkillResult(
   target.hp = Math.max(0, target.hp - finalDmg);
   if (target.hp <= 0) target.isAlive = false;
 
-  if (skill.effectSummary.includes('控制')) {
+  if (skill.effectSummary.includes('?批')) {
     const controlChance = 30 + (player.wil * 2);
     const controlResult = percentCheck(
       controlChance - (target.controlResistCount * 20),
-      '控制判定'
+      '?批?文?'
     );
     result.diceResults.push(controlResult);
     if (controlResult.success) {
       target.isControlled = true;
       target.controlTurns = adjustDurationForTurnOrder(1, combat, { enemyId: target.instanceId });
-      target.controlSource = `${player.name}的[${skill.name}]`;
+      target.controlSource = `${player.name}?${skill.name}]`;
       target.controlResistCount++;
       result.controlApplied = true;
       result.controlDuration = target.controlTurns;
@@ -922,30 +1135,29 @@ export function processPlayerAction(
     return [processPlayerActionSingle(action, player, enemies, state)];
   }
 
-  const classDef = CLASS_DB[player.classId];
-  const spMod = classDef ? getSPWeightMod(player.sp, classDef.spWeightRule) : 0;
+  const spMod = getPlayerSPWeightMod(player);
   const baseResult = createPlayerTurnResult(player);
   baseResult.action = skill.name;
 
   if (player.isControlled) {
-    baseResult.action = '被控制，無法行動';
+    baseResult.action = '鋡急?塚??⊥?銵?';
     return [baseResult];
   }
 
   if (player.sp < skill.spCost) {
-    baseResult.action = `${skill.name} - SP 不足！`;
+    baseResult.action = `${skill.name} - SP 不足`;
     return [baseResult];
   }
 
   if (skill.currentCooldown && skill.currentCooldown > 0) {
-    baseResult.action = `${skill.name} - 冷卻中（剩餘 ${skill.currentCooldown} 回合）`;
+    baseResult.action = `${skill.name} - 冷卻中 ${skill.currentCooldown} 回合`;
     return [baseResult];
   }
 
   if (targeting === 'enemy_all') {
     const targets = enemies.filter((enemy) => enemy.isAlive);
     if (targets.length === 0) {
-      baseResult.action = `${skill.name} - 無有效目標`;
+      baseResult.action = `${skill.name} - 沒有可用目標`;
       return [baseResult];
     }
 
@@ -973,7 +1185,7 @@ export function processPlayerAction(
       : (state.players ?? []).filter((target) => target.name === action.targetId && target.isAlive && !target.isBD);
 
   if (allyTargets.length === 0) {
-    baseResult.action = `${skill.name} - 無有效目標`;
+    baseResult.action = `${skill.name} - 沒有可用目標`;
     return [baseResult];
   }
 
@@ -1000,7 +1212,7 @@ export function checkHiddenTrigger(enemy: EnemyState, player: PlayerState): Dice
   if (!player.isControlled) return null;
 
   const chanceNum = parseInt(enemy.hiddenTrigger.chance);
-  const result = percentCheck(chanceNum, `${enemy.templateName} 隱藏觸發判定`);
+  const result = percentCheck(chanceNum, `${enemy.templateName} ?梯?閫貊?文?`);
   return result;
 }
 
@@ -1067,7 +1279,7 @@ export function advanceCombat(state: GameState): CombatTurnResult[] {
           actorName: `${p.name}(${p.className})`,
           actorIsPlayer: true,
           targetName: '',
-          action: '被控制，無法行動',
+          action: '鋡急?塚??⊥?銵?',
           diceResults: [],
           damageDealt: 0, hpChange: 0, spChange: 0, desChange: 0,
           upperChange: 0, lowerChange: 0, controlApplied: false, controlDuration: 0,
@@ -1083,8 +1295,8 @@ export function advanceCombat(state: GameState): CombatTurnResult[] {
       const dummyResult: CombatTurnResult = {
         actorName: `${p.name}(${p.className})`,
         actorIsPlayer: true,
-        targetName: '自身',
-        action: '回合開始', // A dummy action
+        targetName: '?芾澈',
+        action: '????', // A dummy action
         diceResults: [],
         damageDealt: 0, hpChange: 0, spChange: 0, desChange: 0,
         upperChange: 0, lowerChange: 0, controlApplied: false, controlDuration: 0,
@@ -1110,7 +1322,7 @@ export function advanceCombat(state: GameState): CombatTurnResult[] {
           actorName: enemy.templateName,
           actorIsPlayer: false,
           targetName: '',
-          action: '被控制，無法行動',
+          action: '鋡急?塚??⊥?銵?',
           diceResults: [],
           damageDealt: 0, hpChange: 0, spChange: 0, desChange: 0,
           upperChange: 0, lowerChange: 0, controlApplied: false, controlDuration: 0,
@@ -1134,9 +1346,9 @@ export function advanceCombat(state: GameState): CombatTurnResult[] {
 
         if (counter) {
           res.diceResults.push({
-            purpose: '種族克制',
+            purpose: '蝔格??',
             threshold: 100, roll: 1, success: true,
-            effects: `克制判定: ${counter.reason} (${counter.level})`
+            effects: `??文?: ${counter.reason} (${counter.level})`
           });
         }
 
@@ -1170,8 +1382,8 @@ export function processEndOfRound(
       const dummyResult: CombatTurnResult = {
         actorName: `${player.name}(${player.className})`,
         actorIsPlayer: true,
-        targetName: '自身',
-        action: '回合結束結算',
+        targetName: '?芾澈',
+        action: '??蝯?蝯?',
         diceResults: [],
         damageDealt: 0, hpChange: 0, spChange: 0, desChange: 0,
         upperChange: 0, lowerChange: 0, controlApplied: false, controlDuration: 0,
@@ -1216,10 +1428,10 @@ export function processEndOfRound(
         const dotResult: CombatTurnResult = {
           actorName: `${player.name}(${player.className})`,
           actorIsPlayer: true,
-          targetName: '自身',
-          action: `${se.name} 持續傷害`,
+          targetName: '?芾澈',
+          action: `${se.name} ???瑕拿`,
           diceResults: [{
-            purpose: '持續傷害',
+            purpose: '???瑕拿',
             threshold: 0, roll: 0, success: true,
             effects: `${se.name}: HP ${se.amount}`
           }],
@@ -1236,6 +1448,30 @@ export function processEndOfRound(
           player.isBD = true;
           player.isAlive = player.hp > 0;
         }
+      }
+    }
+
+    const spRegen = getPassiveSpRegen(player);
+    if (spRegen > 0) {
+      const beforeSp = player.sp;
+      player.sp = Math.min(player.maxSp, player.sp + spRegen);
+      if (player.sp > beforeSp) {
+        combat.pendingResults.push({
+          actorName: `${player.name}(${player.className})`,
+          actorIsPlayer: true,
+          targetName: '自身',
+          action: '魔力流通',
+          diceResults: [],
+          damageDealt: 0,
+          hpChange: 0,
+          spChange: player.sp - beforeSp,
+          desChange: 0,
+          upperChange: 0,
+          lowerChange: 0,
+          controlApplied: false,
+          controlDuration: 0,
+          narrative: '',
+        });
       }
     }
 
@@ -1274,9 +1510,9 @@ export function processEndOfRound(
           actorName: enemy.templateName,
           actorIsPlayer: false,
           targetName: '',
-          action: `${se.name} ???瑕拿`,
+          action: `${se.name} ?蹓???`,
           diceResults: [{
-            purpose: '???瑕拿',
+            purpose: '?蹓???',
             threshold: 0, roll: 0, success: true,
             effects: `${se.name}: HP ${se.amount}`
           }],
@@ -1331,3 +1567,5 @@ export function processEndOfRound(
 export function isCombatVictory(enemies: EnemyState[]): boolean {
   return enemies.every((e) => !e.isAlive);
 }
+
+

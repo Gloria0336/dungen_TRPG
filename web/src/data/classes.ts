@@ -571,3 +571,39 @@ export function getClassDef(classId: string): ClassDef | undefined {
 export function getAllClasses(): ClassDef[] {
   return Object.values(CLASS_DB);
 }
+
+export const PROTAGONIST_CLASS: ClassDef = {
+  id: 'CL-PROT',
+  className: '教團聖女候選人',
+  roleTags: ['主角', '教會', '成長型'],
+  autoStats: { STR: 0, AGI: 0, WIL: 0 },
+  baseHp: 60,
+  baseSp: 80,
+  baseDes: 0,
+  spWeightRule: [
+    { condition: 'SP >= 60', hitMod: 5 },
+    { condition: 'SP 20-59', hitMod: 0 },
+    { condition: 'SP < 20', hitMod: -8 },
+  ],
+  skillList: [],
+  initialEquipment: [],
+  growthRule: {
+    description: '主角改用能力點成長',
+    stats: {},
+  },
+  newSkillRule: {
+    chance: '0%',
+    unlockList: [],
+  },
+  durabilityDRProfile: {
+    drU: 0,
+    drL: 0,
+    tierSteps: { '100_80': 0, '79_60': 0, '59_30': 0, '30_0': 0 },
+    repairMaterial: [],
+  },
+  backgroundGuidelines: { theme: '帝國教會聖女候選人，奉命前往地牢討伐魔物。' },
+};
+
+export function getAllCompanionClasses(): ClassDef[] {
+  return Object.values(CLASS_DB).filter((cls) => cls.id !== 'CL-PRST' && cls.id !== PROTAGONIST_CLASS.id);
+}

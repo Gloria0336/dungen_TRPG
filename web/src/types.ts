@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // Core Type Definitions for Dungeon TRPG
 // ============================================================
 
@@ -17,7 +17,7 @@ export type Phase =
 
 export type MonsterTier = 'A' | 'B' | 'C';
 
-export type DurabilityTarget = '上' | '下' | '雙' | '無';
+export type DurabilityTarget = string;
 
 export type EquipSlot = 'Weapon' | 'Upper' | 'Lower' | 'Accessory';
 
@@ -33,18 +33,52 @@ export type ItemType =
 
 export type CounterType = 'normal' | 'absolute';
 export type SkillTargeting = 'self' | 'ally_single' | 'ally_all' | 'enemy_single' | 'enemy_all';
+export type SkillActivation = 'active' | 'passive';
+export type SkillCategory = 'class' | 'weapon' | 'body';
+export type BodySkillCategory = 'passive' | 'self' | 'enemy' | 'ally';
+export type PlayerRole = 'protagonist' | 'companion';
+export type EffectStat = 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp' | 'skillDr';
+
+export interface SkillStatusPayload {
+  name: string;
+  duration: number;
+  effect: string;
+  type: 'statMod' | 'dot' | 'buff';
+  targetStat?: EffectStat;
+  amount?: number;
+}
+
+export interface SkillFormula {
+  damageMultiplier?: number;
+  flatDamageBonus?: number;
+  hitBonus?: number;
+  baseHeal?: number;
+  healScalingStat?: 'str' | 'agi' | 'wil';
+  healScalingFactor?: number;
+  restoreSp?: number;
+  lifeStealPercent?: number;
+  ignoreDefense?: boolean;
+  controlTurns?: number;
+  selfEffect?: SkillStatusPayload;
+  targetEffect?: SkillStatusPayload;
+}
 
 // --- Skill ---
 
 export interface Skill {
   id: string;
   name: string;
-  type: '普攻' | '技能';
+  type: string;
   spCost: number;
   effectSummary: string;
   hitRule: string;
   cooldown: number;
   targeting?: SkillTargeting;
+  activation?: SkillActivation;
+  category?: SkillCategory;
+  level?: number;
+  maxLevel?: number;
+  formula?: SkillFormula;
   // runtime
   currentCooldown?: number;
 }
@@ -55,7 +89,7 @@ export interface MonsterSkill {
   id: string;
   name: string;
   control: boolean;
-  desSpImpactLevel: '低' | '中' | '高' | '極高';
+  desSpImpactLevel: string;
   durabilityTarget: DurabilityTarget;
   hitRule: string;
   effectSummary: string;
@@ -64,11 +98,11 @@ export interface MonsterSkill {
   currentCooldown?: number;
 
   // --- Explicit Numerical Values ---
-  damageMultiplier?: number; // 傷害倍率，預設 1.0
-  controlTurns?: number;     // 控制持續回合數，預設 1
-  desImpactAmount?: number;  // 精確的 DES 變動量，如果未提供則 fallback 到舊機制
-  spDrainAmount?: number;    // 精確的 SP 變動量，如果未提供則 fallback 到舊機制
-  durabilityDamage?: number; // 裝備耐久度扣減基礎值
+  damageMultiplier?: number; // ?瑕拿??嚗?閮?1.0
+  controlTurns?: number;     // ?批?????賂??身 1
+  desImpactAmount?: number;  // 蝎曄Ⅱ??DES 霈???憒??芣?靘? fallback ?啗?璈
+  spDrainAmount?: number;    // 蝎曄Ⅱ??SP 霈???憒??芣?靘? fallback ?啗?璈
+  durabilityDamage?: number; // 鋆???摨行皜蝷?
 
   specialEffects?: {
     type: 'statMod' | 'dot' | 'buff';
@@ -122,6 +156,26 @@ export interface ClassDef {
     bodyBias: string;
     theme: string;
   };
+}
+
+export interface WeaponDef {
+  id: string;
+  name: string;
+  tier: number;
+  atk: number;
+  ampPercent?: number;
+  flatDr?: number;
+  notes?: string;
+  skills: [Skill, Skill];
+}
+
+export interface BodySkillDef {
+  id: string;
+  name: string;
+  category: BodySkillCategory;
+  effectSummary: string;
+  maxLevel: number;
+  targeting?: SkillTargeting;
 }
 
 // --- Monster Definition (DB) ---
@@ -272,6 +326,7 @@ export interface SpecialProgressionDef {
 // --- Runtime State ---
 
 export interface InventoryItem {
+  templateId?: string;
   id: string;
   name: string;
   type: ItemType;
@@ -296,14 +351,23 @@ export interface InventoryItem {
   effectSummary?: string;
 }
 
+export interface BodySkillSlot {
+  skillId: string;
+  level: number;
+}
+
 export interface PlayerState {
   name: string;
   classId: string;
   className: string;
+  role: PlayerRole;
+  isProtagonist: boolean;
   hp: number;
   maxHp: number;
+  baseMaxHp: number;
   sp: number;
   maxSp: number;
+  baseMaxSp: number;
   des: number;
   str: number;
   agi: number;
@@ -323,6 +387,10 @@ export interface PlayerState {
   controlImmunityTurns: number;
   statusEffects: StatusEffect[];
   skills: Skill[];
+  weaponSkillSlots: Skill[];
+  bodySkillSlots: [BodySkillSlot | null, BodySkillSlot | null];
+  protagonistWeaponId: string | null;
+  statPoints: number;
   backgroundTags: string[];
   narrativeTags: string[];
   absoluteCounter: string | null; // family_tag
@@ -438,6 +506,11 @@ export interface GameLogEntry {
   diceResult?: DiceResult;
 }
 
+export interface PendingBodySkillDrop {
+  skillId: string;
+  sourceFloor: number;
+}
+
 export interface GameState {
   runId: string;
   phase: Phase;
@@ -464,6 +537,7 @@ export interface GameState {
   stateHistory: GameStateSnapshot[];
   narrativeHistory: NarrativeEntry[];
   exploreRestCount: number;
+  pendingBodySkillDrop: PendingBodySkillDrop | null;
 }
 
 export interface GameStateSnapshot {
