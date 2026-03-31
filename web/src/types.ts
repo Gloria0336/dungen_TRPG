@@ -37,7 +37,7 @@ export type SkillActivation = 'active' | 'passive';
 export type SkillCategory = 'class' | 'weapon' | 'body';
 export type BodySkillCategory = 'passive' | 'self' | 'enemy' | 'ally';
 export type PlayerRole = 'protagonist' | 'companion';
-export type EffectStat = 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp' | 'skillDr';
+export type EffectStat = 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp' | 'skillDr' | 'amp';
 
 export interface SkillStatusPayload {
   name: string;
@@ -58,6 +58,7 @@ export interface SkillFormula {
   restoreSp?: number;
   lifeStealPercent?: number;
   ignoreDefense?: boolean;
+  ignoreDrPercent?: boolean;
   controlTurns?: number;
   selfEffect?: SkillStatusPayload;
   targetEffect?: SkillStatusPayload;
@@ -106,7 +107,7 @@ export interface MonsterSkill {
 
   specialEffects?: {
     type: 'statMod' | 'dot' | 'buff';
-    targetStat?: 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp' | 'skillDr';
+    targetStat?: 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp' | 'skillDr' | 'amp';
     amount: number;
     duration: number;
   }[];
@@ -413,7 +414,7 @@ export interface StatusEffect {
   effect: string;
   // --- For explicit stat mods ---
   type?: 'statMod' | 'dot' | 'buff';
-  targetStat?: 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp' | 'skillDr';
+  targetStat?: 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp' | 'skillDr' | 'amp';
   amount?: number;
 }
 

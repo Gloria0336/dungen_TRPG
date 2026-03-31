@@ -310,6 +310,7 @@ type TurnTargetRef =
 type StatusEffectCarrier = {
   statusEffects: StatusEffect[];
   skillDrPercent?: number;
+  ampPercent?: number;
   agi?: number;
   str?: number;
   wil?: number;
@@ -358,6 +359,10 @@ function applyStatusEffect(
   if (effect.type === 'buff' && effect.targetStat === 'skillDr' && effect.amount && typeof target.skillDrPercent === 'number') {
     target.skillDrPercent = Math.max(-80, Math.min(80, target.skillDrPercent + effect.amount));
   }
+
+  if (effect.type === 'buff' && effect.targetStat === 'amp' && effect.amount && typeof target.ampPercent === 'number') {
+    target.ampPercent = Math.max(-80, Math.min(200, target.ampPercent + effect.amount));
+  }
 }
 
 function removeExpiredStatusEffect(
@@ -378,6 +383,10 @@ function removeExpiredStatusEffect(
 
   if (effect.type === 'buff' && effect.targetStat === 'skillDr' && effect.amount && typeof target.skillDrPercent === 'number') {
     target.skillDrPercent = Math.max(-80, Math.min(80, target.skillDrPercent - effect.amount));
+  }
+
+  if (effect.type === 'buff' && effect.targetStat === 'amp' && effect.amount && typeof target.ampPercent === 'number') {
+    target.ampPercent = Math.max(-80, Math.min(200, target.ampPercent - effect.amount));
   }
 }
 
@@ -417,6 +426,17 @@ function applyFormulaSelfEffects(
     result.spChange += player.sp - beforeSp;
   }
 
+  if (skill.id === 'SK-FIGHT-RAGE') {
+    applyStatusEffect(player, {
+      name: `${skill.name}自損`,
+      duration: 1,
+      effect: 'SkillDR -10',
+      type: 'buff',
+      targetStat: 'skillDr',
+      amount: -10,
+    });
+  }
+
   const selfEffect = makeAdjustedStatusEffect(formula.selfEffect, combat, { playerIndex });
   if (selfEffect) applyStatusEffect(player, selfEffect);
 }
@@ -425,6 +445,7 @@ function executeFormulaAttack(
   skill: PlayerState['skills'][number],
   player: PlayerState,
   target: EnemyState,
+  playerIndex: number,
   spMod: number,
   combat: CombatState | null | undefined,
   result: CombatTurnResult,
@@ -447,7 +468,7 @@ function executeFormulaAttack(
   const finalDmg = calculateFinalDamage(
     rawDmg,
     getPlayerTotalAmp(player),
-    formula.ignoreDefense ? 0 : target.drPercent,
+    formula.ignoreDefense || formula.ignoreDrPercent ? 0 : target.drPercent,
     formula.ignoreDefense ? 0 : target.skillDrPercent,
     formula.ignoreDefense ? 0 : target.flatDr,
   );
@@ -468,6 +489,9 @@ function executeFormulaAttack(
     player.sp = Math.min(player.maxSp, player.sp + formula.restoreSp);
     result.spChange += player.sp - beforeSp;
   }
+
+  const selfEffect = makeAdjustedStatusEffect(formula.selfEffect, combat, { playerIndex });
+  if (selfEffect) applyStatusEffect(player, selfEffect);
 
   const targetEffect = makeAdjustedStatusEffect(formula.targetEffect, combat, { enemyId: target.instanceId });
   if (targetEffect) applyStatusEffect(target, targetEffect);
@@ -796,7 +820,7 @@ function processPlayerActionSingle(
         skill.currentCooldown = skill.cooldown;
       }
 
-      if (skill.formula && skill.category !== 'class') {
+      if (skill.formula) {
         if (skill.targeting === 'self') {
           applyFormulaSelfEffects(skill, player, result, state.combat, action.playerIndex);
           applyEquipmentSideEffects(player, 'onSkill', result);
@@ -804,7 +828,7 @@ function processPlayerActionSingle(
         }
 
         if (target) {
-          executeFormulaAttack(skill, player, target, spMod, state.combat, result);
+          executeFormulaAttack(skill, player, target, action.playerIndex, spMod, state.combat, result);
           applyEquipmentSideEffects(player, 'onSkill', result);
         }
         break;
@@ -1006,7 +1030,7 @@ function applySupportSkillEffect(
   combat: CombatState | null | undefined,
   targetPlayerIndex: number
 ): void {
-  if (skill.formula && skill.category !== 'class') {
+  if (skill.formula) {
     const formula = skill.formula;
     if (formula.baseHeal) {
       const scaling = formula.healScalingStat ? target[formula.healScalingStat] * (formula.healScalingFactor ?? 0) : 0;
@@ -1057,6 +1081,7 @@ function buildEnemyAllSkillResult(
   skill: PlayerState['skills'][number],
   player: PlayerState,
   target: EnemyState,
+  playerIndex: number,
   spMod: number,
   combat: CombatState | null | undefined,
   baseResult?: CombatTurnResult
@@ -1065,8 +1090,8 @@ function buildEnemyAllSkillResult(
   result.action = skill.name;
   result.targetName = target.templateName;
 
-  if (skill.formula && skill.category !== 'class') {
-    executeFormulaAttack(skill, player, target, spMod, combat, result);
+  if (skill.formula) {
+    executeFormulaAttack(skill, player, target, playerIndex, spMod, combat, result);
     return result;
   }
 
@@ -1170,6 +1195,7 @@ export function processPlayerAction(
         skill,
         player,
         target,
+        action.playerIndex,
         spMod,
         state.combat,
         index === 0 ? baseResult : undefined
