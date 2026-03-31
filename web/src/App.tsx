@@ -50,6 +50,19 @@ function getSkillDescription(skill: { effectSummary: string; hitRule: string }):
   return parts.join(' / ');
 }
 
+function logCombatResult(gs: GameState, res: CombatTurnResult) {
+  res.diceResults.forEach((d) => addLogEntry(gs, 'dice', formatDiceResult(d)));
+  if (res.damageDealt > 0) addLogEntry(gs, 'combat', `${res.actorName} 對 ${res.targetName} 造成 ${res.damageDealt} 點傷害`);
+  if (res.upperChange !== 0 || res.lowerChange !== 0) {
+    const parts: string[] = [];
+    if (res.upperChange !== 0) parts.push(`上衣耐久 ${res.upperChange}`);
+    if (res.lowerChange !== 0) parts.push(`下衣耐久 ${res.lowerChange}`);
+    addLogEntry(gs, 'combat', `${res.targetName} 衣裝受損：${parts.join('、')}`);
+  }
+  if (res.controlApplied) addLogEntry(gs, 'combat', `${res.targetName} 被控制！`);
+  if (res.action === '被控制，無法行動') addLogEntry(gs, 'combat', `${res.actorName} 被控制中，跳過行動`);
+}
+
 export default function App() {
   const [screen, setScreen] = useState<'start' | 'game'>(() => {
     try { return hasSave() ? 'game' : 'start'; } catch { return 'start'; }
@@ -119,10 +132,7 @@ export default function App() {
         const nextRes = advanceCombat(gs);
         if (nextRes.length > 0) {
           for (const res of nextRes) {
-            res.diceResults.forEach(d => addLogEntry(gs, 'dice', formatDiceResult(d)));
-            if (res.damageDealt > 0) addLogEntry(gs, 'combat', `${res.actorName} 對 ${res.targetName} 造成 ${res.damageDealt} 點傷害`);
-            if (res.controlApplied) addLogEntry(gs, 'combat', `${res.targetName} 被控制！`);
-            if (res.action === '被控制，無法行動') addLogEntry(gs, 'combat', `${res.actorName} 被控制中，跳過行動`);
+            logCombatResult(gs, res);
           }
           createSnapshot(gs);
           setState({ ...gs });
@@ -338,10 +348,7 @@ export default function App() {
 
       const nextResults = advanceCombat(state);
       for (const res of nextResults) {
-        res.diceResults.forEach(d => addLogEntry(state, 'dice', formatDiceResult(d)));
-        if (res.damageDealt > 0) addLogEntry(state, 'combat', `${res.actorName} 對 ${res.targetName} 造成 ${res.damageDealt} 點傷害`);
-        if (res.controlApplied) addLogEntry(state, 'combat', `${res.targetName} 被控制！`);
-        if (res.action === '被控制，無法行動') addLogEntry(state, 'combat', `${res.actorName} 被控制中，跳過行動`);
+        logCombatResult(state, res);
       }
 
       createSnapshot(state);
@@ -366,9 +373,7 @@ export default function App() {
     const results = processPlayerAction(action, player, state.enemies, state);
 
     for (const result of results) {
-      result.diceResults.forEach(d => addLogEntry(state, 'dice', formatDiceResult(d)));
-      if (result.damageDealt > 0) addLogEntry(state, 'combat', `${result.actorName} 對 ${result.targetName} 造成 ${result.damageDealt} 點傷害`);
-      if (result.controlApplied) addLogEntry(state, 'combat', `${result.targetName} 被控制！`);
+      logCombatResult(state, result);
     }
 
     state.combat.pendingResults.push(...results);
@@ -377,13 +382,10 @@ export default function App() {
     const nextResults = advanceCombat(state);
     let specialTriggered = false;
     for (const res of nextResults) {
-      res.diceResults.forEach(d => {
-        addLogEntry(state, 'dice', formatDiceResult(d));
+      res.diceResults.forEach((d) => {
         if (d.purpose.includes('隱藏觸發') && d.success) specialTriggered = true;
       });
-      if (res.damageDealt > 0) addLogEntry(state, 'combat', `${res.actorName} 對 ${res.targetName} 造成 ${res.damageDealt} 點傷害`);
-      if (res.controlApplied) addLogEntry(state, 'combat', `${res.targetName} 被控制！`);
-      if (res.action === '被控制，無法行動') addLogEntry(state, 'combat', `${res.actorName} 被控制中，跳過行動`);
+      logCombatResult(state, res);
     }
 
     if (specialTriggered) {
@@ -563,10 +565,7 @@ export default function App() {
 
       const nextResults = advanceCombat(state);
       for (const res of nextResults) {
-        res.diceResults.forEach(d => addLogEntry(state, 'dice', formatDiceResult(d)));
-        if (res.damageDealt > 0) addLogEntry(state, 'combat', `${res.actorName} 對 ${res.targetName} 造成 ${res.damageDealt} 點傷害`);
-        if (res.controlApplied) addLogEntry(state, 'combat', `${res.targetName} 被控制！`);
-        if (res.action === '被控制，無法行動') addLogEntry(state, 'combat', `${res.actorName} 被控制中，跳過行動`);
+        logCombatResult(state, res);
       }
 
       setState({ ...state });

@@ -162,27 +162,46 @@ export function applyDurabilityDamage(
 ): { upperChange: number; lowerChange: number } {
   let upperChange = 0;
   let lowerChange = 0;
+  const normalizedTarget = String(target ?? '').trim();
 
-  switch (target) {
+  const applyEquipmentChange = (
+    equip: PlayerState['equippedUpper'] | PlayerState['equippedLower'],
+    change: number,
+  ) => {
+    if (!equip || typeof equip.durability !== 'number') return;
+    const maxDurability = equip.durabilityMax ?? 100;
+    equip.durability = Math.max(0, Math.min(maxDurability, Math.round(equip.durability + change)));
+  };
+
+  switch (normalizedTarget) {
     case 'upper':
     case 'UPPER':
+    case '上':
       upperChange = -(amount ?? 5) * 1.3;
       player.upperDurability = Math.max(0, player.upperDurability + upperChange);
+      applyEquipmentChange(player.equippedUpper, upperChange);
       break;
     case 'lower':
     case 'LOWER':
+    case '下':
       lowerChange = -(amount ?? 5) * 1.3;
       player.lowerDurability = Math.max(0, player.lowerDurability + lowerChange);
+      applyEquipmentChange(player.equippedLower, lowerChange);
       break;
     case 'both':
     case 'BOTH':
+    case '雙':
       upperChange = -(amount ?? 3) * 1.3;
       lowerChange = -(amount ?? 3) * 1.3;
       player.upperDurability = Math.max(0, player.upperDurability + upperChange);
       player.lowerDurability = Math.max(0, player.lowerDurability + lowerChange);
+      applyEquipmentChange(player.equippedUpper, upperChange);
+      applyEquipmentChange(player.equippedLower, lowerChange);
       break;
     case 'none':
     case 'NONE':
+    case '無':
+    case '无':
     default:
       break;
   }
