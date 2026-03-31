@@ -292,6 +292,8 @@ export interface InventoryItem {
     '59_30': number;
     '30_0': number;
   };
+  stateChanges?: Record<string, number>;
+  effectSummary?: string;
 }
 
 export interface PlayerState {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+﻿import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type {
   GameState, GameConfig, CombatAction, CombatTurnResult,
@@ -64,6 +64,7 @@ export default function App() {
   ]);
   const [biographyText, setBiographyText] = useState('');
   const [actionState, setActionState] = useState<ActionSelectionState>({ type: 'main' });
+  const [showBackpackModal, setShowBackpackModal] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [state?.log.length, narrativeText]);
@@ -83,13 +84,13 @@ export default function App() {
   };
 
   const requestAINarrative = useCallback(async (
-    gs: GameState, results?: CombatTurnResult[], extra?: string, skipAutoTrigger?: boolean
+    gs: GameState, results?: CombatTurnResult[], extra?: string, skipAutoTrigger?: boolean, isMidCombat?: boolean
   ) => {
     if (!config.apiKey) return;
     setIsStreaming(true); setNarrativeText('');
     let full = '';
     try {
-      for await (const chunk of requestNarrative(config.apiKey, config.modelId, gs, results, extra)) {
+      for await (const chunk of requestNarrative(config.apiKey, config.modelId, gs, results, extra, isMidCombat)) {
         full += chunk; setNarrativeText(full);
       }
       addNarrativeToHistory(gs, full);
@@ -304,13 +305,19 @@ export default function App() {
       state.specialMaxTurn = 4;
     }
 
+    let lootExtra = '';
     if (state.combat.isComplete) {
       if (isCombatVictory(state.enemies)) {
         const gold = generateGoldDrop(state.enemies, state.floor);
         state.gold += gold;
         addLogEntry(state, 'system', `🎉 戰鬥勝利！獲得 ${gold} 金幣`);
         const drop = rollItemDrop(state.floor);
-        if (drop) { state.inventory.push(drop); addLogEntry(state, 'system', `掉落: ${drop.name}`); }
+        if (drop) {
+          state.inventory.push(drop);
+          const effectDesc = drop.effectSummary ? `（${drop.effectSummary}）` : '';
+          addLogEntry(state, 'system', `💎 獲得戰利品：${drop.name}${effectDesc}`);
+          lootExtra = `戰鬥結束後，隊伍在敵人遺骸旁搜索到了【${drop.name}】${effectDesc}，將其收入背包。`;
+        }
         for (const p of state.players) {
           if (p.isAlive && !p.isBD) {
             const growth = processGrowth(p, state.floor);
@@ -331,7 +338,8 @@ export default function App() {
     setActionState({ type: 'main' });
     createSnapshot(state);
     setState({ ...state });
-    requestAINarrative(state, [...results, ...nextResults]);
+    const isMidCombatProcess = state.phase === 'COMBAT';
+    requestAINarrative(state, [...results, ...nextResults], lootExtra || undefined, false, isMidCombatProcess);
   };
 
   const handleRestAction = (index: number) => {
@@ -482,6 +490,7 @@ export default function App() {
 
   // --- Render Game ---
   const aliveEnemies = state.enemies.filter(e => e.isAlive);
+  const visibleLogEntries = state.log.slice(-50);
   // Phase actions are rendered inline per phase
 
   return (
@@ -580,11 +589,6 @@ export default function App() {
             </div>
             <span className="floor-info">第 {state.floor} 層 / {state.maxFloor}</span>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              {state.phase !== 'INIT' && (
-                <button className="btn btn-sm" onClick={handleRegenerateNarrative} disabled={isStreaming}>
-                  🔄 重新生成對話
-                </button>
-              )}
               <button className="btn btn-sm btn-danger" onClick={handleRestart}>重新開始</button>
               <button className="btn btn-sm" onClick={() => setShowSettings(true)}>⚙️</button>
             </div>
@@ -685,9 +689,22 @@ export default function App() {
             )}
 
             {/* Log entries */}
-            {state.log.slice(-50).map((entry, i) => (
-              <div key={i} className={`narrative-entry ${entry.type}`}>
-                {entry.type === 'narrative' ? <ReactMarkdown>{entry.text}</ReactMarkdown> : entry.text}
+            {visibleLogEntries.map((entry, i) => (
+              <div key={i} className="narrative-entry-group">
+                <div className={`narrative-entry ${entry.type}`}>
+                  {entry.type === 'narrative' ? <ReactMarkdown>{entry.text}</ReactMarkdown> : entry.text}
+                </div>
+                {state.phase !== 'INIT' && i === visibleLogEntries.length - 1 && (
+                  <button
+                    className="regenerate-message-btn"
+                    onClick={handleRegenerateNarrative}
+                    disabled={isStreaming}
+                    aria-label="重新生成對話"
+                    title="重新生成對話"
+                  >
+                    🔄
+                  </button>
+                )}
               </div>
             ))}
 
@@ -815,24 +832,23 @@ export default function App() {
             )}
             {state.phase === 'REST' && (
               <div className="action-buttons">
-                {[1, 2, 3, 4, 5, 6].map(i => {
+                {[1, 2, 3, 4, 5].map(i => {
                   const remaining = Math.max(0, 3 - state.exploreRestCount);
-                  let label = ['', `原地休息 [剩餘:${remaining}]`, `探索該層 [剩餘:${remaining}]`, '下一層', '檢查狀態 (不耗回合)', '修補裝備', '使用藥水'][i];
+                  let label = ['', `原地休息 [剩餘:${remaining}]`, `探索該層 [剩餘:${remaining}]`, '下一層', '檢查狀態 (不耗回合)', '修補裝備'][i];
                   if (i === 5) {
                     const mats = state.inventory.find(item => item.type === 'material')?.quantity || 0;
                     label = `修補裝備 (${mats}個備品)[剩餘:${remaining}]`;
                   }
-                  if (i === 6) {
-                    const pots = state.inventory.filter(item => item.type === 'potion').reduce((acc, curr) => acc + curr.quantity, 0);
-                    label = `使用藥水 (${pots}瓶)[剩餘:${remaining}]`;
-                  }
-                  const actionBtnClass = "action-btn" + ([1, 2, 5, 6].includes(i) && remaining === 0 ? " disabled-looks" : "");
+                  const actionBtnClass = "action-btn" + ([1, 2, 5].includes(i) && remaining === 0 ? " disabled-looks" : "");
                   return (
                     <button key={i} className={actionBtnClass} disabled={isStreaming} onClick={() => handleRestAction(i)}>
                       {label}
                     </button>
                   );
                 })}
+                <button className="action-btn" disabled={isStreaming} onClick={() => setShowBackpackModal(true)}>
+                  🎒 開啟背包 ({state.inventory.reduce((a, c) => a + c.quantity, 0)} 件)
+                </button>
               </div>
             )}
             {state.phase === 'SPECIAL' && (
@@ -901,6 +917,33 @@ export default function App() {
       </div>
       {showSettings && <SettingsModal config={config} onSave={(c: GameConfig) => { updateConfig(c); if (state) { state.nsgEnabled = c.nsgEnabled; setState({ ...state }); } setShowSettings(false); }} onClose={() => setShowSettings(false)} />}
       {showFullLog && state && <LogViewerModal log={state.log} onClose={() => setShowFullLog(false)} />}
+      {showBackpackModal && state && state.players && (
+        <BackpackModal
+          inventory={state.inventory}
+          players={state.players}
+          phase={state.phase}
+          onUseItem={(itemId, playerIndex) => {
+            const item = state.inventory.find(i => i.id === itemId);
+            if (!item || !state.players) return;
+            const player = state.players[playerIndex];
+            const effects: string[] = [];
+            const changes = item.stateChanges || {};
+            if (changes.hp_delta) { player.hp = Math.min(player.maxHp, player.hp + changes.hp_delta); effects.push(`HP +${changes.hp_delta}`); }
+            if (changes.sp_delta) { player.sp = Math.min(player.maxSp, player.sp + changes.sp_delta); effects.push(`SP +${changes.sp_delta}`); }
+            if (changes.des_delta) { player.des = Math.max(0, Math.min(100, player.des + changes.des_delta)); effects.push(`DES ${changes.des_delta > 0 ? '+' : ''}${changes.des_delta}`); }
+            if (changes.dr_u_delta) { player.upperDurability = Math.min(100, player.upperDurability + changes.dr_u_delta); effects.push(`上衣耐久 +${changes.dr_u_delta}`); }
+            if (changes.dr_l_delta) { player.lowerDurability = Math.min(100, player.lowerDurability + changes.dr_l_delta); effects.push(`下衣耐久 +${changes.dr_l_delta}`); }
+            item.quantity--;
+            if (item.quantity <= 0) state.inventory.splice(state.inventory.indexOf(item), 1);
+            const effectStr = effects.length > 0 ? effects.join('、') : '無立即效果';
+            addLogEntry(state, 'system', `${player.name} 使用了【${item.name}】→ ${effectStr}`);
+            saveGame(state);
+            setState({ ...state });
+            requestAINarrative(state, undefined, `${player.name} 從背包取出【${item.name}】服用，${effectStr}。`);
+          }}
+          onClose={() => setShowBackpackModal(false)}
+        />
+      )}
     </>
   );
 }
@@ -995,6 +1038,90 @@ function SettingsModal({ config, onSave, onClose }: {
   );
 }
 
+function BackpackModal({ inventory, players, phase, onUseItem, onClose }: {
+  inventory: import('./types').InventoryItem[];
+  players: [import('./types').PlayerState, import('./types').PlayerState];
+  phase: import('./types').Phase;
+  onUseItem: (itemId: string, playerIndex: number) => void;
+  onClose: () => void;
+}) {
+  const [selectingPlayerFor, setSelectingPlayerFor] = useState<string | null>(null);
+
+  const usableItems = inventory.filter(i => i.type === 'potion' && i.quantity > 0 && i.stateChanges && Object.keys(i.stateChanges).length > 0);
+  const otherItems = inventory.filter(i => !(i.type === 'potion' && i.stateChanges && Object.keys(i.stateChanges).length > 0));
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: '480px', width: '92vw' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h2 style={{ margin: 0 }}>🎒 背包</h2>
+          <button className="btn btn-sm" onClick={onClose}>✕</button>
+        </div>
+
+        {selectingPlayerFor && (
+          <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+            <div className="text-sm" style={{ color: 'var(--sp-color)', marginBottom: '0.5rem' }}>
+              選擇使用對象：{inventory.find(i => i.id === selectingPlayerFor)?.name}
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {players.map((p, pi) => (
+                <button key={pi} className="btn btn-primary btn-sm" disabled={!p.isAlive || p.isBD} onClick={() => {
+                  onUseItem(selectingPlayerFor, pi);
+                  setSelectingPlayerFor(null);
+                }}>
+                  {p.name} (HP:{p.hp}/{p.maxHp})
+                </button>
+              ))}
+              <button className="btn btn-sm" onClick={() => setSelectingPlayerFor(null)}>取消</button>
+            </div>
+          </div>
+        )}
+
+        {usableItems.length > 0 && (
+          <div style={{ marginBottom: '1rem' }}>
+            <div className="panel-title" style={{ marginBottom: '0.5rem' }}>可使用道具</div>
+            {usableItems.map(item => (
+              <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--border)' }}>
+                <div>
+                  <div className="text-sm" style={{ color: 'var(--text-primary)' }}>
+                    {item.name} <span style={{ color: 'var(--text-dim)' }}>x{item.quantity}</span>
+                  </div>
+                  {item.effectSummary && <div className="text-sm" style={{ color: 'var(--sp-color)' }}>{item.effectSummary}</div>}
+                </div>
+                <button
+                  className="btn btn-sm btn-primary"
+                  disabled={selectingPlayerFor !== null}
+                  onClick={() => setSelectingPlayerFor(item.id)}
+                >
+                  使用
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {otherItems.length > 0 && (
+          <div>
+            <div className="panel-title" style={{ marginBottom: '0.5rem' }}>其他物品</div>
+            {otherItems.map(item => (
+              <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid var(--border)' }}>
+                <div className="text-sm" style={{ color: 'var(--text-primary)' }}>
+                  {item.name} <span style={{ color: 'var(--text-dim)' }}>x{item.quantity}</span>
+                </div>
+                <div className="text-sm" style={{ color: 'var(--text-dim)' }}>{item.type === 'material' ? '材料' : item.type}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {inventory.length === 0 && (
+          <div className="text-sm text-dim" style={{ textAlign: 'center', padding: '2rem 0' }}>背包是空的</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function LogViewerModal({ log, onClose }: { log: GameLogEntry[]; onClose: () => void }) {
   const [filter, setFilter] = useState<'all' | 'narrative' | 'combat' | 'system'>('all');
 
@@ -1065,3 +1192,4 @@ function LogViewerModal({ log, onClose }: { log: GameLogEntry[]; onClose: () => 
     </div>
   );
 }
+

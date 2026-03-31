@@ -204,6 +204,13 @@ html, body, #root {
   display: flex; flex-direction: column; gap: 0.8rem;
 }
 
+.narrative-entry-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+}
+
 .narrative-entry {
   padding: 0.8rem 1rem; border-radius: var(--radius-sm);
   animation: fadeIn 0.3s ease;
@@ -237,6 +244,33 @@ html, body, #root {
 .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
 .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
 @keyframes typing { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-8px); } }
+
+.regenerate-message-btn {
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-glass);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.regenerate-message-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text-primary);
+  background: rgba(139, 92, 246, 0.12);
+  box-shadow: 0 0 14px var(--accent-glow);
+}
+
+.regenerate-message-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
 /* ============ Action Area ============ */
 .action-area {

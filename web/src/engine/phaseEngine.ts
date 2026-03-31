@@ -66,7 +66,7 @@ export function getPhaseActions(phase: Phase, state: GameState): string[] {
         '3. 進入下一層',
         '4. 檢查自身狀態 (不消耗回合)',
         `5. 裝備修補（若有材料） [剩餘行動:${remaining}]`,
-        `6. 飲用藥水（若背包有） [剩餘行動:${remaining}]`,
+        `6. 開啟背包（使用道具） [不消耗回合]`,
         '7. 穿戴/更換裝備 (不消耗回合)',
         `8. 復活同伴（需道具） [剩餘行動:${remaining}]`,
       ];

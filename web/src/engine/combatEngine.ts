@@ -637,10 +637,14 @@ function processPlayerActionSingle(
           });
         }
         if (skill.effectSummary.includes('閃避')) {
-          player.statusEffects.push({
+          const duration = adjustDurationForTurnOrder(1, state.combat, { playerIndex: action.playerIndex });
+          applyStatusEffect(player, {
             name: '閃避提升',
-            duration: 1,
+            duration,
             effect: '閃避率 +30%',
+            type: 'statMod',
+            targetStat: 'evade',
+            amount: 30,
           });
         }
         break;
@@ -725,17 +729,12 @@ function processPlayerActionSingle(
       // Temporary Skill DR boost for this round
       const duration = adjustDurationForTurnOrder(1, state.combat, { playerIndex: action.playerIndex });
       applyStatusEffect(player, {
-        name: '?脩戌憪踵?',
+        name: '防禦姿態',
         duration,
         effect: 'SkillDR% +15',
         type: 'buff',
         targetStat: 'skillDr',
         amount: 15,
-      });
-      player.statusEffects.push({
-        name: '防禦姿態',
-        duration: 1,
-        effect: 'SkillDR% +15',
       });
       applyEquipmentSideEffects(player, 'onDefend', result);
       break;
@@ -824,25 +823,24 @@ function applySupportSkillEffect(
   if (skill.effectSummary.includes('DR')) {
     const duration = adjustDurationForTurnOrder(1, combat, { playerIndex: targetPlayerIndex });
     applyStatusEffect(target, {
-      name: `${skill.name}霅琿?`,
+      name: `${skill.name}護體`,
       duration,
       effect: 'SkillDR% +15',
       type: 'buff',
       targetStat: 'skillDr',
       amount: 15,
     });
-    target.statusEffects.push({
-      name: `${skill.name}護體`,
-      duration: 1,
-      effect: 'SkillDR% +15',
-    });
   }
 
-  if (skill.effectSummary.includes('迴避')) {
-    target.statusEffects.push({
+  if (skill.effectSummary.includes('閃避') || skill.effectSummary.includes('迴避')) {
+    const duration = adjustDurationForTurnOrder(1, combat, { playerIndex: targetPlayerIndex });
+    applyStatusEffect(target, {
       name: `${skill.name}迴避提升`,
-      duration: 1,
+      duration,
       effect: '迴避率+30%',
+      type: 'statMod',
+      targetStat: 'evade',
+      amount: 30,
     });
   }
 }

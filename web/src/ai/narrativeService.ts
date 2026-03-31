@@ -203,7 +203,8 @@ export async function* requestNarrative(
   modelId: string,
   state: GameState,
   combatResults?: CombatTurnResult[],
-  extraContext?: string
+  extraContext?: string,
+  isMidCombat?: boolean
 ): AsyncGenerator<string, void, undefined> {
   const systemPrompt = buildSystemPrompt(state);
   const sceneSummary = buildSceneSummary(state, combatResults, extraContext);
@@ -220,7 +221,12 @@ export async function* requestNarrative(
   }
 
   userContent += `### 最新數值與事件數據\n${sceneSummary}\n\n`;
-  userContent += `### 執行指令\n請忽略上述所有 ### 標題，直接輸出針對上述「最新數值與事件」的沉浸式故事敘事。禁止輸出任何前言或重複數據標籤。`;
+
+  if (isMidCombat) {
+    userContent += `### 執行指令\n請忽略上述所有 ### 標題，直接輸出針對上述「最新數值與事件」的沉浸式故事敘事。禁止輸出任何前言或重複數據標籤。【字數嚴格限制】這是戰鬥進行中的行動敘事，全文不得超過30字，務必極度精簡。`;
+  } else {
+    userContent += `### 執行指令\n請忽略上述所有 ### 標題，直接輸出針對上述「最新數值與事件」的沉浸式故事敘事。禁止輸出任何前言或重複數據標籤。`;
+  }
 
   // Build messages
   const messages: ChatMessage[] = [

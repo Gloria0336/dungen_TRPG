@@ -1,6 +1,7 @@
 import type { GameState, PlayerState } from '../types';
 import { CLASS_DB } from '../data/classes';
 import { EQUIPMENT_DB } from '../data/equipment';
+import { POTION_DB } from '../data/potions';
 import { determineShopFloors } from './shopEngine';
 import { assignAbsoluteCounter } from './counterEngine';
 import { calculateDR } from './combatEngine';
@@ -15,13 +16,20 @@ export function createNewRun(): GameState {
   const runId = `R-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
   const shopFloors = determineShopFloors();
 
+  const p001 = POTION_DB['IT-POT-001'];
+  const p002 = POTION_DB['IT-POT-002'];
+  const initialInventory = [
+    { id: `INIT-POT001-${Math.random().toString(36).slice(2,6)}`, name: p001.templateName, type: p001.itemType, quantity: 2, equipStatus: 'Inventory' as const, stateChanges: p001.stateChanges, effectSummary: p001.effectSummary },
+    { id: `INIT-POT002-${Math.random().toString(36).slice(2,6)}`, name: p002.templateName, type: p002.itemType, quantity: 2, equipStatus: 'Inventory' as const, stateChanges: p002.stateChanges, effectSummary: p002.effectSummary },
+  ];
+
   return {
     runId,
     phase: 'INIT',
     floor: 1,
     maxFloor: 20,
     players: null,
-    inventory: [],
+    inventory: initialInventory,
     gold: 0,
     enemies: [],
     combat: null,

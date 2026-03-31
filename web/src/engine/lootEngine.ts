@@ -1,6 +1,7 @@
 import type { InventoryItem, EnemyState, PlayerState } from '../types';
 import { percentCheck, randomInt } from './diceEngine';
 import { CLASS_DB } from '../data/classes';
+import { POTION_DB } from '../data/potions';
 
 // ============================================================
 // Loot Engine - drops, gold, growth after combat victory
@@ -34,7 +35,10 @@ export function rollItemDrop(floor: number): InventoryItem | null {
   if (cat === 'material') {
     return { id, name: ['修補布', '粗製皮革', '金屬片'][Math.floor(Math.random() * 3)], type: 'material', quantity: randomInt(1, 2), equipStatus: 'Inventory' };
   }
-  return { id, name: Math.random() > 0.5 ? '微型生命藥水' : '精神安定劑', type: 'potion', quantity: 1, equipStatus: 'Inventory' };
+  // Pick a random potion from POTION_DB
+  const potionEntries = Object.values(POTION_DB).filter(p => p.itemType === 'potion');
+  const def = potionEntries[Math.floor(Math.random() * potionEntries.length)];
+  return { id, name: def.templateName, type: 'potion', quantity: 1, equipStatus: 'Inventory', stateChanges: def.stateChanges, effectSummary: def.effectSummary };
 }
 
 export function processGrowth(player: PlayerState, floor: number): string[] {
