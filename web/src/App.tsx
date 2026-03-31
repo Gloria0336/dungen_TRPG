@@ -8,14 +8,14 @@ import { getAllCompanionClasses, PROTAGONIST_CLASS } from './data/classes';
 import { getBodySkillDef } from './data/skills';
 import {
   createNewRun, initializePlayer, initializeProtagonist, saveGame, loadGame,
-  hasSave, deleteSave, addLogEntry, createSnapshot, synthesizeProtagonistSkills,
+  hasSave, deleteSave, addLogEntry, createSnapshot, synthesizeProtagonistSkills, recalculatePlayerStats,
 } from './engine/stateManager';
 import {
   initCombat, processPlayerAction,
   isCombatVictory, advanceCombat
 } from './engine/combatEngine';
 import { isAllyTargetingSkill, skillNeedsTargetSelection } from './engine/skillTargeting';
-import { generateExploreEncounter, processRestAction } from './engine/phaseEngine';
+import { generateEnemies, generateExploreEncounter, processRestAction } from './engine/phaseEngine';
 import { generateGoldDrop, rollBodySkillDrop, rollItemDrop, processGrowth } from './engine/lootEngine';
 // shop engine used indirectly via phase transitions
 import { formatDiceResult } from './engine/diceEngine';
@@ -517,16 +517,52 @@ export default function App() {
       const val = parseInt(desMatch[1]);
       state.players.forEach(p => p.des = Math.max(0, Math.min(100, p.des + val)));
     }
+    if (actualEffects.includes('Upper/Lower耐久') && state.players) {
+      const bothMatch = actualEffects.match(/Upper\/Lower耐久\s*([+-]\d+)/);
+      if (bothMatch) {
+        const val = parseInt(bothMatch[1]);
+        state.players.forEach((p) => {
+          p.upperDurability = Math.max(0, Math.min(100, p.upperDurability + val));
+          p.lowerDurability = Math.max(0, Math.min(100, p.lowerDurability + val));
+          recalculatePlayerStats(p);
+        });
+      }
+    }
+    const upperMatch = actualEffects.match(/Upper耐久\s*([+-]\d+)/);
+    if (upperMatch && state.players && !actualEffects.includes('Upper/Lower耐久')) {
+      const val = parseInt(upperMatch[1]);
+      state.players.forEach((p) => {
+        p.upperDurability = Math.max(0, Math.min(100, p.upperDurability + val));
+        recalculatePlayerStats(p);
+      });
+    }
+    const lowerMatch = actualEffects.match(/Lower耐久\s*([+-]\d+)/);
+    if (lowerMatch && state.players && !actualEffects.includes('Upper/Lower耐久')) {
+      const val = parseInt(lowerMatch[1]);
+      state.players.forEach((p) => {
+        p.lowerDurability = Math.max(0, Math.min(100, p.lowerDurability + val));
+        recalculatePlayerStats(p);
+      });
+    }
 
     if (actualEffects.includes('Phase->COMBAT')) {
-      // Trigger combat
-      const encounter = generateExploreEncounter(state.floor, state);
-      state.enemies = encounter.enemies || [];
+      // Trigger combat directly rather than rolling another encounter/event.
+      state.enemies = generateEnemies(state.floor);
       state.combat = initCombat(state.players!, state.enemies);
       state.phase = 'COMBAT';
       state.currentEvent = null;
+      setActionState({ type: 'main' });
+
+      const nextResults = advanceCombat(state);
+      for (const res of nextResults) {
+        res.diceResults.forEach(d => addLogEntry(state, 'dice', formatDiceResult(d)));
+        if (res.damageDealt > 0) addLogEntry(state, 'combat', `${res.actorName} 對 ${res.targetName} 造成 ${res.damageDealt} 點傷害`);
+        if (res.controlApplied) addLogEntry(state, 'combat', `${res.targetName} 被控制！`);
+        if (res.action === '被控制，無法行動') addLogEntry(state, 'combat', `${res.actorName} 被控制中，跳過行動`);
+      }
+
       setState({ ...state });
-      requestAINarrative(state, undefined, `事件導致了戰鬥！ ${actualEffects}`);
+      requestAINarrative(state, nextResults.length > 0 ? nextResults : undefined, `事件導致了戰鬥！ ${actualEffects}`);
       return;
     }
 
