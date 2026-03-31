@@ -495,6 +495,7 @@ export interface CombatTurnResult {
   controlApplied: boolean;
   controlDuration: number;
   narrative: string; // filled by AI
+  companionBDTriggered?: boolean; // companion just hit DES=100 this turn
 }
 
 export interface GameLogEntry {
@@ -539,6 +540,7 @@ export interface GameState {
   narrativeHistory: NarrativeEntry[];
   exploreRestCount: number;
   pendingBodySkillDrop: PendingBodySkillDrop | null;
+  endReason?: 'protagonist_hp' | 'protagonist_des';
 }
 
 export interface GameStateSnapshot {

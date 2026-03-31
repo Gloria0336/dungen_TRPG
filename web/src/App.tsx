@@ -429,9 +429,20 @@ export default function App() {
         state.combat = null;
         state.enemies = [];
       } else {
-        if (state.players.every(p => !p.isAlive || p.isBD)) {
+        const protagonist = state.players.find(p => p.isProtagonist);
+        if (protagonist && !protagonist.isAlive) {
+          // HP=0 Bad End
+          state.endReason = 'protagonist_hp';
           state.phase = 'END';
-          addLogEntry(state, 'system', '💀 兩名角色皆陣亡，冒險結束。');
+          addLogEntry(state, 'system', '💀 主角HP歸零，冒險終結。');
+        } else if (protagonist && protagonist.isBD) {
+          // DES=100 Bad End
+          state.endReason = 'protagonist_des';
+          state.phase = 'END';
+          addLogEntry(state, 'system', '💀 主角絕望值達到上限（DES 100），冒險終結。');
+        } else if (state.players.every(p => !p.isAlive || p.isBD)) {
+          state.phase = 'END';
+          addLogEntry(state, 'system', '💀 隊伍全滅，冒險結束。');
         }
       }
     }
@@ -1113,6 +1124,11 @@ export default function App() {
             )}
             {state.phase === 'END' && (
               <div className="action-buttons">
+                <div style={{ marginBottom: '0.8rem', color: 'var(--hp-low)', fontWeight: 'bold', textAlign: 'center' }}>
+                  {state.endReason === 'protagonist_hp' && '【Bad End — 死亡】主角的生命耗盡，倒在黑暗之中。'}
+                  {state.endReason === 'protagonist_des' && '【Bad End — 崩潰】主角的意志徹底瓦解，沉淪於絕望。'}
+                  {!state.endReason && '冒險結束。'}
+                </div>
                 <button className="btn btn-primary" onClick={() => { deleteSave(); setScreen('start'); setState(null); }}>回到標題</button>
               </div>
             )}

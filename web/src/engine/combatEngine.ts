@@ -732,7 +732,11 @@ export function processEnemyAttack(
 
     // Check BD condition (HP or DES reaches 0/max)
     if (player.hp <= 0 || player.des >= 100) {
-      player.isAlive = player.hp > 0; // Can still be alive but in BD
+      if (!player.isBD && !player.isProtagonist && player.des >= 100 && player.hp > 0) {
+        result.companionBDTriggered = true;
+      }
+      player.isBD = true;
+      player.isAlive = player.hp > 0;
     }
 
     // Set skill cooldown after use
@@ -1290,8 +1294,12 @@ export function advanceCombat(state: GameState): CombatTurnResult[] {
   while (true) {
     // Check victory / defeat immediately
     const allEnemiesDead = state.enemies.every((e) => !e.isAlive);
+    // Protagonist defeat ends combat immediately (HP=0 or DES=100)
+    const protagonist = state.players.find(p => p.isProtagonist);
+    const protagonistDefeated = !!protagonist && (!protagonist.isAlive || protagonist.isBD);
+    // Fallback: all players dead/BD (e.g. no protagonist present)
     const allPlayersDead = state.players.every((p) => !p.isAlive || p.isBD);
-    if (allEnemiesDead || allPlayersDead) {
+    if (allEnemiesDead || protagonistDefeated || allPlayersDead) {
       combat.isComplete = true;
       break;
     }
@@ -1440,6 +1448,9 @@ export function processEndOfRound(
         
         // BD check in case side effect instantly kills/BDs player
         if (player.hp <= 0 || player.des >= 100) {
+          if (!player.isBD && !player.isProtagonist && player.des >= 100 && player.hp > 0) {
+            dummyResult.companionBDTriggered = true;
+          }
           player.isBD = true;
           player.isAlive = player.hp > 0;
         }
@@ -1490,6 +1501,9 @@ export function processEndOfRound(
 
         // BD check after DOT
         if (player.hp <= 0 || player.des >= 100) {
+          if (!player.isBD && !player.isProtagonist && player.des >= 100 && player.hp > 0) {
+            dotResult.companionBDTriggered = true;
+          }
           player.isBD = true;
           player.isAlive = player.hp > 0;
         }
