@@ -921,7 +921,6 @@ export default function App() {
         <BackpackModal
           inventory={state.inventory}
           players={state.players}
-          phase={state.phase}
           onUseItem={(itemId, playerIndex) => {
             const item = state.inventory.find(i => i.id === itemId);
             if (!item || !state.players) return;
@@ -1038,10 +1037,9 @@ function SettingsModal({ config, onSave, onClose }: {
   );
 }
 
-function BackpackModal({ inventory, players, phase, onUseItem, onClose }: {
+function BackpackModal({ inventory, players, onUseItem, onClose }: {
   inventory: import('./types').InventoryItem[];
   players: [import('./types').PlayerState, import('./types').PlayerState];
-  phase: import('./types').Phase;
   onUseItem: (itemId: string, playerIndex: number) => void;
   onClose: () => void;
 }) {
