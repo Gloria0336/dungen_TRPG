@@ -13,6 +13,7 @@ import {
   initCombat, processPlayerAction,
   isCombatVictory, advanceCombat
 } from './engine/combatEngine';
+import { isAllyTargetingSkill, skillNeedsTargetSelection } from './engine/skillTargeting';
 import { generateExploreEncounter, processRestAction } from './engine/phaseEngine';
 import { generateGoldDrop, rollItemDrop, processGrowth } from './engine/lootEngine';
 // shop engine used indirectly via phase transitions
@@ -273,13 +274,15 @@ export default function App() {
     action.playerIndex = pIdx;
 
     const player = state.players[pIdx];
-    const result = processPlayerAction(action, player, state.enemies, state);
+    const results = processPlayerAction(action, player, state.enemies, state);
 
-    result.diceResults.forEach(d => addLogEntry(state, 'dice', formatDiceResult(d)));
-    if (result.damageDealt > 0) addLogEntry(state, 'combat', `${result.actorName} 對 ${result.targetName} 造成 ${result.damageDealt} 點傷害`);
-    if (result.controlApplied) addLogEntry(state, 'combat', `${result.targetName} 被控制！`);
+    for (const result of results) {
+      result.diceResults.forEach(d => addLogEntry(state, 'dice', formatDiceResult(d)));
+      if (result.damageDealt > 0) addLogEntry(state, 'combat', `${result.actorName} 對 ${result.targetName} 造成 ${result.damageDealt} 點傷害`);
+      if (result.controlApplied) addLogEntry(state, 'combat', `${result.targetName} 被控制！`);
+    }
 
-    state.combat.pendingResults.push(result);
+    state.combat.pendingResults.push(...results);
 
     // Continue the turn loop by processing the rest of the queue
     const nextResults = advanceCombat(state);
@@ -328,7 +331,7 @@ export default function App() {
     setActionState({ type: 'main' });
     createSnapshot(state);
     setState({ ...state });
-    requestAINarrative(state, [result, ...nextResults]);
+    requestAINarrative(state, [...results, ...nextResults]);
   };
 
   const handleRestAction = (index: number) => {
@@ -728,7 +731,7 @@ export default function App() {
                         </button>
                         {currentPlayer.skills.filter(s => (!s.currentCooldown || s.currentCooldown === 0) && currentPlayer.sp >= s.spCost).map(s => (
                           <button key={s.id} className="action-btn skill" disabled={isStreaming} onClick={() => {
-                            if (s.hitRule.includes('全體') || s.hitRule.includes('自身')) {
+                            if (!skillNeedsTargetSelection(s)) {
                               handleCombatAction({ type: 'skill', skillId: s.id, playerIndex: pIdx });
                             } else {
                               setActionState({ type: 'skill_target', selectedSkillId: s.id });
@@ -767,14 +770,14 @@ export default function App() {
 
                   if (actionState.type === 'skill_target') {
                     const skill = currentPlayer.skills.find(s => s.id === actionState.selectedSkillId);
-                    const isHealing = skill?.effectSummary.includes('回復') || skill?.effectSummary.includes('治癒') || skill?.effectSummary.includes('護盾');
+                    const isAllySkill = skill ? isAllyTargetingSkill(skill) : false;
 
                     return (
                       <>
                         <div className="text-sm" style={{ width: '100%', marginBottom: '0.3rem', color: 'var(--sp-color)' }}>
                           選擇技能目標：{skill?.name}
                         </div>
-                        {isHealing ? (
+                        {isAllySkill ? (
                           state.players.filter(p => !p.isBD).map((p, i) => (
                             <button key={i} className="action-btn skill" disabled={isStreaming} onClick={() => handleCombatAction({ type: 'skill', skillId: skill!.id, targetId: p.name /* uses name as id for player targets temporarily, though skill targeting players isn't fully using targetId yet */, playerIndex: pIdx })}>
                               ❤️ {p.name} (HP: {p.hp}/{p.maxHp})

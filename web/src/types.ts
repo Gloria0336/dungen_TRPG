@@ -32,6 +32,7 @@ export type ItemType =
   | 'potion';
 
 export type CounterType = 'normal' | 'absolute';
+export type SkillTargeting = 'self' | 'ally_single' | 'ally_all' | 'enemy_single' | 'enemy_all';
 
 // --- Skill ---
 
@@ -43,6 +44,7 @@ export interface Skill {
   effectSummary: string;
   hitRule: string;
   cooldown: number;
+  targeting?: SkillTargeting;
   // runtime
   currentCooldown?: number;
 }
@@ -70,7 +72,7 @@ export interface MonsterSkill {
 
   specialEffects?: {
     type: 'statMod' | 'dot' | 'buff';
-    targetStat?: 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp';
+    targetStat?: 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp' | 'skillDr';
     amount: number;
     duration: number;
   }[];
@@ -341,7 +343,7 @@ export interface StatusEffect {
   effect: string;
   // --- For explicit stat mods ---
   type?: 'statMod' | 'dot' | 'buff';
-  targetStat?: 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp';
+  targetStat?: 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp' | 'skillDr';
   amount?: number;
 }
 

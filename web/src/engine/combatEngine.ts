@@ -6,6 +6,7 @@ import type {
 import { hitCheck, evadeCheck, percentCheck, getSPWeightMod, randomFloat, randomInt, parseBaseHit } from './diceEngine';
 import { getCounterEffects } from './counterEngine';
 import { CLASS_DB } from '../data/classes';
+import { getSkillTargeting } from './skillTargeting';
 
 // ============================================================
 // Combat Engine - handles all combat calculations
@@ -226,6 +227,84 @@ export function getStatusEffectMod(
     .reduce((sum, se) => sum + (se.amount ?? 0), 0);
 }
 
+type TurnTargetRef =
+  | { playerIndex: number }
+  | { enemyId: string };
+
+type StatusEffectCarrier = {
+  statusEffects: StatusEffect[];
+  skillDrPercent?: number;
+  agi?: number;
+  str?: number;
+  wil?: number;
+};
+
+function targetHasRemainingTurn(
+  combat: CombatState | null | undefined,
+  target: TurnTargetRef
+): boolean {
+  if (!combat) return false;
+
+  return combat.turnOrder.some((turn) => {
+    if ('playerIndex' in target) {
+      return turn.isPlayer && turn.playerIndex === target.playerIndex;
+    }
+    return !turn.isPlayer && turn.entityId === target.enemyId;
+  });
+}
+
+function adjustDurationForTurnOrder(
+  baseDuration: number,
+  combat: CombatState | null | undefined,
+  target: TurnTargetRef
+): number {
+  return targetHasRemainingTurn(combat, target) ? baseDuration : baseDuration + 1;
+}
+
+function applyStatusEffect(
+  target: StatusEffectCarrier,
+  effect: StatusEffect
+): void {
+  target.statusEffects.push(effect);
+
+  if (effect.type === 'statMod' && effect.targetStat && effect.amount) {
+    if (effect.targetStat === 'agi' && typeof target.agi === 'number') {
+      target.agi = Math.max(0, target.agi + effect.amount);
+    }
+    if (effect.targetStat === 'wil' && typeof target.wil === 'number') {
+      target.wil = Math.max(0, target.wil + effect.amount);
+    }
+    if (effect.targetStat === 'str' && typeof target.str === 'number') {
+      target.str = Math.max(0, target.str + effect.amount);
+    }
+  }
+
+  if (effect.type === 'buff' && effect.targetStat === 'skillDr' && effect.amount && typeof target.skillDrPercent === 'number') {
+    target.skillDrPercent = Math.max(0, target.skillDrPercent + effect.amount);
+  }
+}
+
+function removeExpiredStatusEffect(
+  target: StatusEffectCarrier,
+  effect: StatusEffect
+): void {
+  if (effect.type === 'statMod' && effect.targetStat && effect.amount) {
+    if (effect.targetStat === 'agi' && typeof target.agi === 'number') {
+      target.agi = Math.max(0, target.agi - effect.amount);
+    }
+    if (effect.targetStat === 'wil' && typeof target.wil === 'number') {
+      target.wil = Math.max(0, target.wil - effect.amount);
+    }
+    if (effect.targetStat === 'str' && typeof target.str === 'number') {
+      target.str = Math.max(0, target.str - effect.amount);
+    }
+  }
+
+  if (effect.type === 'buff' && effect.targetStat === 'skillDr' && effect.amount && typeof target.skillDrPercent === 'number') {
+    target.skillDrPercent = Math.max(0, target.skillDrPercent - effect.amount);
+  }
+}
+
 /** Get DES/SP impact amount by level */
 function getImpactAmount(level: MonsterSkill['desSpImpactLevel']): number {
   switch (level) {
@@ -285,7 +364,9 @@ export function processEnemyAttack(
   skill: MonsterSkill,
   counterHitMod: number = 0,
   softPenalty: number = 0,
-  _nsgEnabled: boolean = true
+  _nsgEnabled: boolean = true,
+  combat?: CombatState,
+  targetPlayerIndex?: number
 ): CombatTurnResult {
   const result: CombatTurnResult = {
     actorName: enemy.templateName,
@@ -320,11 +401,12 @@ export function processEnemyAttack(
   } else {
     // Player's hit debuff makes enemy more likely to land
     const playerHitDebuff = getStatusEffectMod(player.statusEffects, 'hit');
+    const enemyHitMod = getStatusEffectMod(enemy.statusEffects, 'hit');
     hitResult = hitCheck(
       baseHit,
       0,
       counterHitMod,
-      -playerHitDebuff,
+      enemyHitMod - playerHitDebuff,
       `${enemy.templateName}: ${skill.name} 命中判定`
     );
   }
@@ -383,7 +465,11 @@ export function processEnemyAttack(
 
     // Control effect
     if (skill.control && !player.controlImmunity) {
-      const controlDuration = skill.controlTurns ?? 1;
+      const baseControlDuration = skill.controlTurns ?? 1;
+      const controlDuration =
+        typeof targetPlayerIndex === 'number'
+          ? adjustDurationForTurnOrder(baseControlDuration, combat, { playerIndex: targetPlayerIndex })
+          : baseControlDuration;
       result.controlApplied = true;
       result.controlDuration = controlDuration;
       player.isControlled = true;
@@ -394,19 +480,29 @@ export function processEnemyAttack(
     // Special Effects
     if (skill.specialEffects) {
       for (const effect of skill.specialEffects) {
+        const adjustedDuration =
+          typeof targetPlayerIndex === 'number'
+            ? adjustDurationForTurnOrder(effect.duration, combat, { playerIndex: targetPlayerIndex })
+            : effect.duration;
         if (effect.type === 'statMod' && effect.targetStat && effect.amount) {
-          player.statusEffects.push({
+          applyStatusEffect(player, {
             name: `${skill.name}附加效果`,
-            duration: effect.duration,
+            duration: adjustedDuration,
             effect: `${effect.targetStat.toUpperCase()} ${effect.amount > 0 ? '+' : ''}${effect.amount}`,
             type: effect.type,
             targetStat: effect.targetStat,
             amount: effect.amount,
           });
-          // Apply stat mod directly
-          if (effect.targetStat === 'agi') player.agi = Math.max(0, player.agi + effect.amount);
-          if (effect.targetStat === 'wil') player.wil = Math.max(0, player.wil + effect.amount);
-          if (effect.targetStat === 'str') player.str = Math.max(0, player.str + effect.amount);
+        }
+        if (effect.type === 'dot' && effect.targetStat === 'hp' && effect.amount) {
+          applyStatusEffect(player, {
+            name: `${skill.name}????`,
+            duration: adjustedDuration,
+            effect: `HP ${effect.amount}`,
+            type: effect.type,
+            targetStat: effect.targetStat,
+            amount: effect.amount,
+          });
         }
       }
     }
@@ -426,7 +522,7 @@ export function processEnemyAttack(
 }
 
 /** Process a player's combat action */
-export function processPlayerAction(
+function processPlayerActionSingle(
   action: CombatAction,
   player: PlayerState,
   enemies: EnemyState[],
@@ -530,7 +626,15 @@ export function processPlayerAction(
           result.hpChange = healAmount;
         }
         if (skill.effectSummary.includes('DR')) {
-          // Temporary DR boost handled separately
+          const duration = adjustDurationForTurnOrder(1, state.combat, { playerIndex: action.playerIndex });
+          applyStatusEffect(player, {
+            name: `${skill.name}護體`,
+            duration,
+            effect: 'SkillDR% +15',
+            type: 'buff',
+            targetStat: 'skillDr',
+            amount: 15,
+          });
         }
         if (skill.effectSummary.includes('閃避')) {
           player.statusEffects.push({
@@ -577,14 +681,38 @@ export function processPlayerAction(
             result.diceResults.push(controlResult);
             if (controlResult.success) {
               target.isControlled = true;
-              target.controlTurns = 1;
+              target.controlTurns = adjustDurationForTurnOrder(1, state.combat, { enemyId: target.instanceId });
               target.controlSource = `${player.name}的[${skill.name}]`;
               target.controlResistCount++;
               result.controlApplied = true;
-              result.controlDuration = 1;
+              result.controlDuration = target.controlTurns;
             }
           }
           
+          if (skill.id === 'SK-ASSN-POIS') {
+            const duration = adjustDurationForTurnOrder(3, state.combat, { enemyId: target.instanceId });
+            applyStatusEffect(target, {
+              name: `${skill.name}中毒`,
+              duration,
+              effect: '每回合 HP -10',
+              type: 'dot',
+              targetStat: 'hp',
+              amount: -10,
+            });
+          }
+
+          if (skill.id === 'SK-DIVA-SONG') {
+            const duration = adjustDurationForTurnOrder(1, state.combat, { enemyId: target.instanceId });
+            applyStatusEffect(target, {
+              name: `${skill.name}弱化`,
+              duration,
+              effect: '命中 -5',
+              type: 'statMod',
+              targetStat: 'hit',
+              amount: -5,
+            });
+          }
+
           applyEquipmentSideEffects(player, 'onSkill', result);
         }
       }
@@ -595,6 +723,15 @@ export function processPlayerAction(
       result.action = '防禦';
       result.targetName = '自身';
       // Temporary Skill DR boost for this round
+      const duration = adjustDurationForTurnOrder(1, state.combat, { playerIndex: action.playerIndex });
+      applyStatusEffect(player, {
+        name: '?脩戌憪踵?',
+        duration,
+        effect: 'SkillDR% +15',
+        type: 'buff',
+        targetStat: 'skillDr',
+        amount: 15,
+      });
       player.statusEffects.push({
         name: '防禦姿態',
         duration: 1,
@@ -649,6 +786,214 @@ export function processPlayerAction(
   }
 
   return result;
+}
+
+function createPlayerTurnResult(player: PlayerState): CombatTurnResult {
+  return {
+    actorName: `${player.name}(${player.className})`,
+    actorIsPlayer: true,
+    targetName: '',
+    action: '',
+    diceResults: [],
+    damageDealt: 0,
+    hpChange: 0,
+    spChange: 0,
+    desChange: 0,
+    upperChange: 0,
+    lowerChange: 0,
+    controlApplied: false,
+    controlDuration: 0,
+    narrative: '',
+  };
+}
+
+function applySupportSkillEffect(
+  skill: PlayerState['skills'][number],
+  target: PlayerState,
+  result: CombatTurnResult,
+  combat: CombatState | null | undefined,
+  targetPlayerIndex: number
+): void {
+  if (skill.effectSummary.includes('回復HP') || skill.effectSummary.includes('回復')) {
+    const beforeHp = target.hp;
+    const healAmount = randomInt(15, 30);
+    target.hp = Math.min(target.maxHp, target.hp + healAmount);
+    result.hpChange = target.hp - beforeHp;
+  }
+
+  if (skill.effectSummary.includes('DR')) {
+    const duration = adjustDurationForTurnOrder(1, combat, { playerIndex: targetPlayerIndex });
+    applyStatusEffect(target, {
+      name: `${skill.name}霅琿?`,
+      duration,
+      effect: 'SkillDR% +15',
+      type: 'buff',
+      targetStat: 'skillDr',
+      amount: 15,
+    });
+    target.statusEffects.push({
+      name: `${skill.name}護體`,
+      duration: 1,
+      effect: 'SkillDR% +15',
+    });
+  }
+
+  if (skill.effectSummary.includes('迴避')) {
+    target.statusEffects.push({
+      name: `${skill.name}迴避提升`,
+      duration: 1,
+      effect: '迴避率+30%',
+    });
+  }
+}
+
+function buildEnemyAllSkillResult(
+  skill: PlayerState['skills'][number],
+  player: PlayerState,
+  target: EnemyState,
+  spMod: number,
+  combat: CombatState | null | undefined,
+  baseResult?: CombatTurnResult
+): CombatTurnResult {
+  const result = baseResult ?? createPlayerTurnResult(player);
+  result.action = skill.name;
+  result.targetName = target.templateName;
+
+  const baseHit = parseBaseHit(skill.hitRule);
+  const hitMod = getStatusEffectMod(player.statusEffects, 'hit');
+  const hitResult = hitCheck(baseHit, spMod, 0, hitMod, `${player.name}: ${skill.name} 命中判定`);
+  result.diceResults.push(hitResult);
+
+  if (!hitResult.success) return result;
+
+  const atk = calculateATK(player);
+  const skillMultiplier = skill.spCost >= 20 ? 1.8 : 1.3;
+  let rawDmg = Math.round(calculateRawDamage(atk) * skillMultiplier);
+  rawDmg = Math.round(rawDmg * 1.15);
+
+  const finalDmg = calculateFinalDamage(
+    rawDmg,
+    player.ampPercent,
+    target.drPercent,
+    target.skillDrPercent,
+    target.flatDr
+  );
+
+  result.damageDealt = finalDmg;
+  target.hp = Math.max(0, target.hp - finalDmg);
+  if (target.hp <= 0) target.isAlive = false;
+
+  if (skill.effectSummary.includes('控制')) {
+    const controlChance = 30 + (player.wil * 2);
+    const controlResult = percentCheck(
+      controlChance - (target.controlResistCount * 20),
+      '控制判定'
+    );
+    result.diceResults.push(controlResult);
+    if (controlResult.success) {
+      target.isControlled = true;
+      target.controlTurns = adjustDurationForTurnOrder(1, combat, { enemyId: target.instanceId });
+      target.controlSource = `${player.name}的[${skill.name}]`;
+      target.controlResistCount++;
+      result.controlApplied = true;
+      result.controlDuration = target.controlTurns;
+    }
+  }
+
+  return result;
+}
+
+/** Process a player's combat action */
+export function processPlayerAction(
+  action: CombatAction,
+  player: PlayerState,
+  enemies: EnemyState[],
+  state: GameState
+): CombatTurnResult[] {
+  if (action.type !== 'skill') {
+    return [processPlayerActionSingle(action, player, enemies, state)];
+  }
+
+  const skill = player.skills.find((s) => s.id === action.skillId);
+  if (!skill) {
+    return [processPlayerActionSingle(action, player, enemies, state)];
+  }
+
+  const targeting = getSkillTargeting(skill);
+  if (targeting === 'enemy_single' || targeting === 'self') {
+    return [processPlayerActionSingle(action, player, enemies, state)];
+  }
+
+  const classDef = CLASS_DB[player.classId];
+  const spMod = classDef ? getSPWeightMod(player.sp, classDef.spWeightRule) : 0;
+  const baseResult = createPlayerTurnResult(player);
+  baseResult.action = skill.name;
+
+  if (player.isControlled) {
+    baseResult.action = '被控制，無法行動';
+    return [baseResult];
+  }
+
+  if (player.sp < skill.spCost) {
+    baseResult.action = `${skill.name} - SP 不足！`;
+    return [baseResult];
+  }
+
+  if (skill.currentCooldown && skill.currentCooldown > 0) {
+    baseResult.action = `${skill.name} - 冷卻中（剩餘 ${skill.currentCooldown} 回合）`;
+    return [baseResult];
+  }
+
+  if (targeting === 'enemy_all') {
+    const targets = enemies.filter((enemy) => enemy.isAlive);
+    if (targets.length === 0) {
+      baseResult.action = `${skill.name} - 無有效目標`;
+      return [baseResult];
+    }
+
+    player.sp -= skill.spCost;
+    baseResult.spChange = -skill.spCost;
+    if (skill.cooldown > 0) skill.currentCooldown = skill.cooldown;
+
+    const results = targets.map((target, index) =>
+      buildEnemyAllSkillResult(
+        skill,
+        player,
+        target,
+        spMod,
+        state.combat,
+        index === 0 ? baseResult : undefined
+      )
+    );
+    applyEquipmentSideEffects(player, 'onSkill', results[0]);
+    return results;
+  }
+
+  const allyTargets =
+    targeting === 'ally_all'
+      ? (state.players ?? []).filter((target) => target.isAlive && !target.isBD)
+      : (state.players ?? []).filter((target) => target.name === action.targetId && target.isAlive && !target.isBD);
+
+  if (allyTargets.length === 0) {
+    baseResult.action = `${skill.name} - 無有效目標`;
+    return [baseResult];
+  }
+
+  player.sp -= skill.spCost;
+  baseResult.spChange = -skill.spCost;
+  if (skill.cooldown > 0) skill.currentCooldown = skill.cooldown;
+
+  const results = allyTargets.map((target, index) => {
+    const result = index === 0 ? baseResult : createPlayerTurnResult(player);
+    result.action = skill.name;
+    result.targetName = target.name;
+    const targetIndex = (state.players ?? []).findIndex((candidate) => candidate.name === target.name);
+    applySupportSkillEffect(skill, target, result, state.combat, targetIndex >= 0 ? targetIndex : 0);
+    return result;
+  });
+
+  applyEquipmentSideEffects(player, 'onSkill', results[0]);
+  return results;
 }
 
 /** Check hidden trigger for B/C class monsters */
@@ -778,7 +1123,16 @@ export function advanceCombat(state: GameState): CombatTurnResult[] {
         const targetPlayer = state.players[targetPlayerIndex];
         const counter = getCounterEffects(enemy, targetPlayer, state.floor);
 
-        const res = processEnemyAttack(enemy, targetPlayer, skill, counter?.hitMod ?? 0, combat.softPenalty, state.nsgEnabled);
+        const res = processEnemyAttack(
+          enemy,
+          targetPlayer,
+          skill,
+          counter?.hitMod ?? 0,
+          combat.softPenalty,
+          state.nsgEnabled,
+          combat,
+          targetPlayerIndex
+        );
 
         if (counter) {
           res.diceResults.push({
@@ -891,12 +1245,7 @@ export function processEndOfRound(
     player.statusEffects = player.statusEffects.filter((se) => {
       se.duration--;
       if (se.duration <= 0) {
-        // Revert stat mod
-        if (se.type === 'statMod' && se.targetStat && se.amount) {
-          if (se.targetStat === 'agi') player.agi = Math.max(0, player.agi - se.amount);
-          if (se.targetStat === 'wil') player.wil = Math.max(0, player.wil - se.amount);
-          if (se.targetStat === 'str') player.str = Math.max(0, player.str - se.amount);
-        }
+        removeExpiredStatusEffect(player, se);
         return false;
       }
       return true;
@@ -919,6 +1268,42 @@ export function processEndOfRound(
         enemy.controlSource = undefined;
       }
     }
+
+    for (const se of enemy.statusEffects) {
+      if (se.type === 'dot' && se.targetStat === 'hp' && se.amount) {
+        enemy.hp = Math.max(0, enemy.hp + se.amount);
+        const dotResult: CombatTurnResult = {
+          actorName: enemy.templateName,
+          actorIsPlayer: false,
+          targetName: '',
+          action: `${se.name} ???瑕拿`,
+          diceResults: [{
+            purpose: '???瑕拿',
+            threshold: 0, roll: 0, success: true,
+            effects: `${se.name}: HP ${se.amount}`
+          }],
+          damageDealt: Math.abs(se.amount),
+          hpChange: se.amount, spChange: 0, desChange: 0,
+          upperChange: 0, lowerChange: 0,
+          controlApplied: false, controlDuration: 0,
+          narrative: ''
+        };
+        combat.pendingResults.push(dotResult);
+
+        if (enemy.hp <= 0) {
+          enemy.isAlive = false;
+        }
+      }
+    }
+
+    enemy.statusEffects = enemy.statusEffects.filter((se) => {
+      se.duration--;
+      if (se.duration <= 0) {
+        removeExpiredStatusEffect(enemy, se);
+        return false;
+      }
+      return true;
+    });
 
     // Decrement monster skill cooldowns
     for (const skill of enemy.skills) {
