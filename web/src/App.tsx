@@ -28,7 +28,7 @@ import './index.css';
 const CONFIG_KEY = 'dungen_trpg_config';
 
 type ActionSelectionState = {
-  type: 'main' | 'attack_target' | 'skill_target' | 'item_target';
+  type: 'main' | 'attack_target' | 'skill_target' | 'skill_confirm' | 'item_target';
   selectedSkillId?: string;
   selectedItemId?: string;
 };
@@ -41,6 +41,14 @@ function loadConfig(): GameConfig {
   return { apiKey: '', modelId: 'google/gemini-2.5-flash-preview', modelName: 'Gemini 2.5 Flash', nsgEnabled: true };
 }
 function saveConfig(c: GameConfig) { localStorage.setItem(CONFIG_KEY, JSON.stringify(c)); }
+
+function getSkillDescription(skill: { effectSummary: string; hitRule: string }): string {
+  const parts = [skill.effectSummary, skill.hitRule]
+    .map((part) => part.trim())
+    .filter((part, index, arr) => part.length > 0 && arr.indexOf(part) === index);
+
+  return parts.join(' / ');
+}
 
 export default function App() {
   const [screen, setScreen] = useState<'start' | 'game'>(() => {
@@ -919,8 +927,10 @@ export default function App() {
                         </button>
                         {currentPlayer.skills.filter(s => s.activation !== 'passive' && (!s.currentCooldown || s.currentCooldown === 0) && currentPlayer.sp >= s.spCost).map(s => (
                           <button key={s.id} className="action-btn skill" disabled={isStreaming} onClick={() => {
-                            if (!skillNeedsTargetSelection(s)) {
-                              handleCombatAction({ type: 'skill', skillId: s.id, playerIndex: pIdx });
+                            if (s.targeting === 'self') {
+                              setActionState({ type: 'skill_confirm', selectedSkillId: s.id });
+                            } else if (!skillNeedsTargetSelection(s)) {
+                              setActionState({ type: 'skill_confirm', selectedSkillId: s.id });
                             } else {
                               setActionState({ type: 'skill_target', selectedSkillId: s.id });
                             }
@@ -965,6 +975,11 @@ export default function App() {
                         <div className="text-sm" style={{ width: '100%', marginBottom: '0.3rem', color: 'var(--sp-color)' }}>
                           選擇技能目標：{skill?.name}
                         </div>
+                        {skill && (
+                          <div className="action-detail skill-detail">
+                            技能描述：{getSkillDescription(skill)}
+                          </div>
+                        )}
                         {isAllySkill ? (
                           state.players.filter(p => !p.isBD).map((p, i) => (
                             <button key={i} className="action-btn skill" disabled={isStreaming} onClick={() => handleCombatAction({ type: 'skill', skillId: skill!.id, targetId: p.name /* uses name as id for player targets temporarily, though skill targeting players isn't fully using targetId yet */, playerIndex: pIdx })}>
@@ -978,6 +993,35 @@ export default function App() {
                             </button>
                           ))
                         )}
+                        <button className="action-btn" disabled={isStreaming} onClick={() => setActionState({ type: 'main' })}>
+                          ↩️ 返回
+                        </button>
+                      </>
+                    );
+                  }
+
+                  if (actionState.type === 'skill_confirm') {
+                    const skill = currentPlayer.skills.find(s => s.id === actionState.selectedSkillId);
+
+                    if (!skill) {
+                      return null;
+                    }
+
+                    return (
+                      <>
+                        <div className="text-sm" style={{ width: '100%', marginBottom: '0.3rem', color: 'var(--sp-color)' }}>
+                          確認施放技能：{skill.name}
+                        </div>
+                        <div className="action-detail skill-detail">
+                          技能描述：{getSkillDescription(skill)}
+                        </div>
+                        <button
+                          className="action-btn skill"
+                          disabled={isStreaming}
+                          onClick={() => handleCombatAction({ type: 'skill', skillId: skill.id, playerIndex: pIdx })}
+                        >
+                          {skill.targeting === 'self' ? '✅ 對自己施放' : '✅ 確認施放'}
+                        </button>
                         <button className="action-btn" disabled={isStreaming} onClick={() => setActionState({ type: 'main' })}>
                           ↩️ 返回
                         </button>

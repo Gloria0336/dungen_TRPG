@@ -292,6 +292,21 @@ html, body, #root {
 .action-btn.skill { border-color: rgba(59, 130, 246, 0.4); }
 .action-btn.skill:hover { background: rgba(59, 130, 246, 0.1); }
 .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.action-detail {
+  width: 100%;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.03);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.skill-detail {
+  border-color: rgba(59, 130, 246, 0.22);
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--text-primary);
+}
 
 .input-row { display: flex; gap: 0.5rem; }
 .input-row input {
