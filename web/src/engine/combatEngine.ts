@@ -7,7 +7,7 @@ import { hitCheck, evadeCheck, percentCheck, getSPWeightMod, randomFloat, random
 import { getCounterEffects } from './counterEngine';
 import { CLASS_DB } from '../data/classes';
 import { getSkillTargeting } from './skillTargeting';
-import { getEffectivePlayerDes, getPlayerPenaltyState, syncOutfitBreakControl } from './playerPenaltyEngine';
+import { getPlayerPenaltyState, syncOutfitBreakControl } from './playerPenaltyEngine';
 
 // ============================================================
 // Combat Engine - handles all combat calculations
@@ -853,9 +853,10 @@ export function processEnemyAttack(
     }
 
     // Check BD condition (HP or DES reaches 0/max)
-    const effectiveDes = getEffectivePlayerDes(player);
-    if (player.hp <= 0 || effectiveDes >= 100) {
-      if (!player.isBD && !player.isProtagonist && effectiveDes >= 100 && player.hp > 0) {
+    const penaltyState = getPlayerPenaltyState(player);
+    const effectiveDes = penaltyState.effectiveDes;
+    if (player.hp <= 0 || effectiveDes >= penaltyState.effectiveDesMax) {
+      if (!player.isBD && !player.isProtagonist && effectiveDes >= penaltyState.effectiveDesMax && player.hp > 0) {
         result.companionBDTriggered = true;
       }
       player.isBD = true;
@@ -1587,9 +1588,10 @@ export function processEndOfRound(
         combat.pendingResults.push(dummyResult);
 
         // BD check in case side effect instantly kills/BDs player
-        const effectiveDes = getEffectivePlayerDes(player);
-        if (player.hp <= 0 || effectiveDes >= 100) {
-          if (!player.isBD && !player.isProtagonist && effectiveDes >= 100 && player.hp > 0) {
+        const penaltyState = getPlayerPenaltyState(player);
+        const effectiveDes = penaltyState.effectiveDes;
+        if (player.hp <= 0 || effectiveDes >= penaltyState.effectiveDesMax) {
+          if (!player.isBD && !player.isProtagonist && effectiveDes >= penaltyState.effectiveDesMax && player.hp > 0) {
             dummyResult.companionBDTriggered = true;
           }
           player.isBD = true;
@@ -1644,9 +1646,10 @@ export function processEndOfRound(
         combat.pendingResults.push(dotResult);
 
         // BD check after DOT
-        const effectiveDes = getEffectivePlayerDes(player);
-        if (player.hp <= 0 || effectiveDes >= 100) {
-          if (!player.isBD && !player.isProtagonist && effectiveDes >= 100 && player.hp > 0) {
+        const penaltyState = getPlayerPenaltyState(player);
+        const effectiveDes = penaltyState.effectiveDes;
+        if (player.hp <= 0 || effectiveDes >= penaltyState.effectiveDesMax) {
+          if (!player.isBD && !player.isProtagonist && effectiveDes >= penaltyState.effectiveDesMax && player.hp > 0) {
             dotResult.companionBDTriggered = true;
           }
           player.isBD = true;
@@ -1679,6 +1682,41 @@ export function processEndOfRound(
           controlDuration: 0,
           narrative: ''
         });
+      }
+
+      if (se.type === 'dot' && se.targetStat === 'des' && se.amount) {
+        const appliedDes = applyPlayerDesChange(player, se.amount);
+        if (appliedDes === 0) continue;
+        combat.pendingResults.push({
+          actorName: `${player.name}(${player.className})`,
+          actorIsPlayer: true,
+          targetName: '自身',
+          action: `${se.name} 持續效果`,
+          diceResults: [{
+            purpose: '持續效果',
+            threshold: 0, roll: 0, success: true,
+            effects: `${se.name}: DES ${appliedDes > 0 ? '+' : ''}${appliedDes}`
+          }],
+          damageDealt: 0,
+          hpChange: 0,
+          spChange: 0,
+          desChange: appliedDes,
+          upperChange: 0,
+          lowerChange: 0,
+          controlApplied: false,
+          controlDuration: 0,
+          narrative: ''
+        });
+
+        const penaltyState = getPlayerPenaltyState(player);
+        const effectiveDes = penaltyState.effectiveDes;
+        if (player.hp <= 0 || effectiveDes >= penaltyState.effectiveDesMax) {
+          if (!player.isBD && !player.isProtagonist && effectiveDes >= penaltyState.effectiveDesMax && player.hp > 0) {
+            combat.pendingResults[combat.pendingResults.length - 1].companionBDTriggered = true;
+          }
+          player.isBD = true;
+          player.isAlive = player.hp > 0;
+        }
       }
     }
 

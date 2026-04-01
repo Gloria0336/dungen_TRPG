@@ -16,7 +16,7 @@ import {
   isCombatVictory, advanceCombat, getEffectivePlayerStat, normalizeStatusEffect,
   applyPlayerDesChange, applyStatusEffect, clearFloorExpiredStatusEffects,
 } from './engine/combatEngine';
-import { getEffectivePlayerDes, getPlayerPenaltySummary, syncOutfitBreakControl } from './engine/playerPenaltyEngine';
+import { getEffectivePlayerDes, getEffectivePlayerDesMax, getPlayerPenaltySummary, syncOutfitBreakControl } from './engine/playerPenaltyEngine';
 import { isAllyTargetingSkill, skillNeedsTargetSelection } from './engine/skillTargeting';
 import { generateEnemies, generateExploreEncounter, processRestAction } from './engine/phaseEngine';
 import {
@@ -821,7 +821,7 @@ export default function App() {
 
                   <StatBar label="HP" value={p.hp} max={p.maxHp} type="hp" />
                   <StatBar label="SP" value={p.sp} max={p.maxSp} type="sp" />
-                  <StatBar label="DES" value={getEffectivePlayerDes(p)} max={100} type="des" />
+                  <StatBar label="DES" value={getEffectivePlayerDes(p)} max={getEffectivePlayerDesMax(p)} type="des" />
 
                   <div className="mt-1 text-sm text-dim">
                     STR:{getEffectivePlayerStat(p, 'str')} AGI:{getEffectivePlayerStat(p, 'agi')} WIL:{getEffectivePlayerStat(p, 'wil')} DR:{p.drPercent}%
@@ -1351,9 +1351,50 @@ export default function App() {
             const changes = item.stateChanges || {};
             if (changes.hp_delta) { player.hp = Math.min(player.maxHp, player.hp + changes.hp_delta); effects.push(`HP +${changes.hp_delta}`); }
             if (changes.sp_delta) { player.sp = Math.min(player.maxSp, player.sp + changes.sp_delta); effects.push(`SP +${changes.sp_delta}`); }
+            if (typeof changes.des_set === 'number') {
+              player.des = Math.max(0, Math.min(100, changes.des_set));
+              effects.push(`DES 設為 ${player.des}`);
+            }
             if (changes.des_delta) {
               const appliedDesDelta = applyPlayerDesChange(player, changes.des_delta);
               effects.push(`DES ${appliedDesDelta > 0 ? '+' : ''}${appliedDesDelta}`);
+            }
+            if (changes.des_cap_delta) {
+              applyStatusEffect(player, {
+                name: `${item.name}的代價`,
+                effect: `DES 上限 ${changes.des_cap_delta}`,
+                type: 'statMod',
+                category: 'curse',
+                expiresOnBattleEnd: false,
+                removalCondition: '特殊手段解除',
+                targetStat: 'desCap',
+                amount: changes.des_cap_delta,
+              });
+              effects.push(`DES 上限 ${changes.des_cap_delta}`);
+            }
+            if (changes.amp_buff_delta) {
+              applyStatusEffect(player, {
+                name: `${item.name}增幅`,
+                effect: `戰鬥傷害 +${changes.amp_buff_delta}%`,
+                type: 'buff',
+                category: 'buff',
+                expiresOnBattleEnd: true,
+                targetStat: 'amp',
+                amount: changes.amp_buff_delta,
+              });
+              effects.push(`戰鬥傷害 +${changes.amp_buff_delta}%（持續至戰鬥結束）`);
+            }
+            if (changes.des_dot_delta) {
+              applyStatusEffect(player, {
+                name: `${item.name}副作用`,
+                effect: `戰鬥中每回合 DES +${changes.des_dot_delta}`,
+                type: 'dot',
+                category: 'debuff',
+                expiresOnBattleEnd: true,
+                targetStat: 'des',
+                amount: changes.des_dot_delta,
+              });
+              effects.push(`戰鬥中每回合 DES +${changes.des_dot_delta}`);
             }
             if (changes.dr_u_delta) {
               if (setEquippedItemDurability(player, 'Upper', player.upperDurability + changes.dr_u_delta)) {

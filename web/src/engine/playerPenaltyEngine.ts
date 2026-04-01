@@ -2,7 +2,7 @@ import type { PlayerState } from '../types';
 
 type PenaltyStateSource = Pick<
   PlayerState,
-  'des' | 'upperDurability' | 'lowerDurability'
+  'des' | 'upperDurability' | 'lowerDurability' | 'statusEffects'
 >;
 
 type BreakControlSource = Pick<
@@ -17,6 +17,7 @@ type BreakControlSource = Pick<
 
 export interface PlayerPenaltyState {
   effectiveDes: number;
+  effectiveDesMax: number;
   desBonus: number;
   agiPenalty: number;
   strPenalty: number;
@@ -36,10 +37,18 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function getDesCap(source: Pick<PlayerState, 'statusEffects'>): number {
+  const capDelta = source.statusEffects
+    .filter((effect) => effect.targetStat === 'desCap' && typeof effect.amount === 'number')
+    .reduce((sum, effect) => sum + (effect.amount ?? 0), 0);
+
+  return clamp(100 + capDelta, 1, 100);
+}
+
 function getOutfitPenaltyState(
   upperDurability: number,
   lowerDurability: number,
-): Omit<PlayerPenaltyState, 'effectiveDes'> {
+): Omit<PlayerPenaltyState, 'effectiveDes' | 'effectiveDesMax'> {
   const outfitTotal = Math.max(0, upperDurability) + Math.max(0, lowerDurability);
   const hasBrokenOutfit = upperDurability <= 0 || lowerDurability <= 0;
 
@@ -120,11 +129,13 @@ function getDesPenaltyState(effectiveDes: number): Pick<PlayerPenaltyState, 'agi
 
 export function getPlayerPenaltyState(player: PenaltyStateSource): PlayerPenaltyState {
   const outfitPenalty = getOutfitPenaltyState(player.upperDurability, player.lowerDurability);
-  const effectiveDes = clamp(player.des + outfitPenalty.desBonus, 0, 100);
+  const effectiveDesMax = getDesCap(player);
+  const effectiveDes = clamp(player.des + outfitPenalty.desBonus, 0, effectiveDesMax);
   const desPenalty = getDesPenaltyState(effectiveDes);
 
   return {
     effectiveDes,
+    effectiveDesMax,
     desBonus: outfitPenalty.desBonus,
     agiPenalty: outfitPenalty.agiPenalty + desPenalty.agiPenalty,
     strPenalty: outfitPenalty.strPenalty + desPenalty.strPenalty,
@@ -135,6 +146,10 @@ export function getPlayerPenaltyState(player: PenaltyStateSource): PlayerPenalty
 
 export function getEffectivePlayerDes(player: PenaltyStateSource): number {
   return getPlayerPenaltyState(player).effectiveDes;
+}
+
+export function getEffectivePlayerDesMax(player: PenaltyStateSource): number {
+  return getPlayerPenaltyState(player).effectiveDesMax;
 }
 
 export function getPlayerPenaltySummary(player: PenaltyStateSource): string[] {
