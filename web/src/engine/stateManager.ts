@@ -249,6 +249,13 @@ export function recalculatePlayerStats(player: PlayerState): void {
   if (player.baseMaxSp === undefined) player.baseMaxSp = player.maxSp;
   if (player.isProtagonist) synthesizeProtagonistSkills(player);
 
+  if (typeof player.equippedUpper?.durability === 'number') {
+    player.upperDurability = player.equippedUpper.durability;
+  }
+  if (typeof player.equippedLower?.durability === 'number') {
+    player.lowerDurability = player.equippedLower.durability;
+  }
+
   // Reset flat bonuses
   player.flatDr = 0;
   player.ampPercent = 0;
@@ -288,6 +295,63 @@ export function equipProtagonistWeapon(
   player.protagonistWeaponId = weaponDef.id;
   recalculatePlayerStats(player);
   return previousWeapon;
+}
+
+export function setEquippedItemDurability(
+  player: PlayerState,
+  slot: 'Upper' | 'Lower',
+  durability: number,
+): void {
+  const equippedItem = slot === 'Upper' ? player.equippedUpper : player.equippedLower;
+  const maxDurability = equippedItem?.durabilityMax ?? 100;
+  const nextDurability = Math.max(0, Math.min(maxDurability, Math.round(durability)));
+
+  if (slot === 'Upper') player.upperDurability = nextDurability;
+  else player.lowerDurability = nextDurability;
+
+  if (equippedItem) equippedItem.durability = nextDurability;
+}
+
+export function equipProtagonistEquipment(
+  player: PlayerState,
+  item: InventoryItem,
+): InventoryItem | null {
+  if (!player.isProtagonist) return null;
+
+  if (item.type === 'weapon') {
+    return equipProtagonistWeapon(player, item);
+  }
+
+  const slot = item.equipSlot;
+  if (slot !== 'Upper' && slot !== 'Lower') {
+    return null;
+  }
+
+  const nextItem: InventoryItem = {
+    ...item,
+    quantity: 1,
+    equipStatus: 'Equipped',
+  };
+
+  const previousItem =
+    slot === 'Upper'
+      ? player.equippedUpper
+        ? { ...player.equippedUpper, equipStatus: 'Inventory' as const }
+        : null
+      : player.equippedLower
+        ? { ...player.equippedLower, equipStatus: 'Inventory' as const }
+        : null;
+
+  if (slot === 'Upper') {
+    player.equippedUpper = nextItem;
+    setEquippedItemDurability(player, 'Upper', nextItem.durability ?? nextItem.durabilityMax ?? 100);
+  } else {
+    player.equippedLower = nextItem;
+    setEquippedItemDurability(player, 'Lower', nextItem.durability ?? nextItem.durabilityMax ?? 100);
+  }
+
+  recalculatePlayerStats(player);
+  return previousItem;
 }
 
 export function saveGame(state: GameState): void {

@@ -53,7 +53,7 @@ export const MONSTER_DB: Record<string, MonsterDef> = {
     templateName: '流亡盜賊',
     tier: 'A',
     familyTag: '人類系',
-    baseStats: { hp: 50, atk: 14, hit: 75, evade: 25 },
+    baseStats: { hp: 50, atk: 14, hit: 75, evade: 30 },
     skillSet: [
       {
         id: 'MS-A3-ATK', name: '卑劣切擊', control: false,
@@ -297,7 +297,7 @@ export const MONSTER_DB: Record<string, MonsterDef> = {
       {
         id: 'MS-B6-B', name: '尻子玉獲得', control: true,
         desSpImpactLevel: '極高', durabilityTarget: '下',
-        hitRule: '基礎命中55%', baseHit: 55, cooldown: 4,
+        hitRule: '基礎命中55%', baseHit: 85, cooldown: 3,
         damageMultiplier: 1.2,
         controlTurns: 1,
         durabilityDamage: 10,
@@ -478,6 +478,32 @@ export const MONSTER_DB: Record<string, MonsterDef> = {
     jailbreakBehavior: ['磷粉讓角色視野變得粉紅模糊，吸入的每一口空氣都充滿了燥熱的慾望'],
     hiddenTrigger: null,
     scalingHint: '深層顯著提升閃避率',
+  },
+  'A-6': {
+    id: 'A-6',
+    templateName: '小哥布林',
+    tier: 'A',
+    familyTag: '亞人類',
+    baseStats: { hp: 30, atk: 8, hit: 75, evade: 40 },
+    skillSet: [
+      {
+        id: 'MS-A6-ATK', name: '撲上撕咬', control: false,
+        desSpImpactLevel: '高', durabilityTarget: '上',
+        hitRule: '基礎命中75%', baseHit: 75, cooldown: 1,
+        damageMultiplier: 1.0,
+        durabilityDamage: 25,
+        desImpactAmount: 8,
+        spDrainAmount: 0,
+        specialEffects: [
+          { type: 'statMod', targetStat: 'agi', amount: -5, duration: 2 }
+        ],
+        effectSummary: '造成 100% 物理傷害，並對上半身裝備造成大量損耗（耐久 -25），使目標 AGI -5（持續 2 回合）。',
+      },
+    ],
+    behaviorRules: ['偏好撲向目標上身撕咬，優先破壞裝備並削弱行動速度'],
+    jailbreakBehavior: ['小哥布林會鎖定上半身防具的脆弱處猛撲撕咬，試圖讓獵物失去平衡'],
+    hiddenTrigger: null,
+    scalingHint: '高迴避低血量的騷擾型 A 級怪物，命中後能有效拖慢目標節奏',
   },
   'B-7': {
     id: 'B-7',

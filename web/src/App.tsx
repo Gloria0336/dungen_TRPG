@@ -9,11 +9,11 @@ import { getBodySkillDef } from './data/skills';
 import {
   createNewRun, initializePlayer, initializeProtagonist, saveGame, loadGame,
   hasSave, deleteSave, addLogEntry, createSnapshot, synthesizeProtagonistSkills, recalculatePlayerStats,
-  equipProtagonistWeapon,
+  equipProtagonistEquipment, setEquippedItemDurability,
 } from './engine/stateManager';
 import {
   initCombat, processPlayerAction,
-  isCombatVictory, advanceCombat
+  isCombatVictory, advanceCombat, getEffectivePlayerStat
 } from './engine/combatEngine';
 import { isAllyTargetingSkill, skillNeedsTargetSelection } from './engine/skillTargeting';
 import { generateEnemies, generateExploreEncounter, processRestAction } from './engine/phaseEngine';
@@ -444,12 +444,12 @@ export default function App() {
         if (protagonist && !protagonist.isAlive) {
           // HP=0 Bad End
           state.endReason = 'protagonist_hp';
-          state.phase = 'END';
+          state.phase = 'badEnd';
           addLogEntry(state, 'system', '💀 主角HP歸零，冒險終結。');
         } else if (protagonist && protagonist.isBD) {
           // DES=100 Bad End
           state.endReason = 'protagonist_des';
-          state.phase = 'END';
+          state.phase = 'badEnd';
           addLogEntry(state, 'system', '💀 主角絕望值達到上限（DES 100），冒險終結。');
         } else if (state.players.every(p => !p.isAlive || p.isBD)) {
           state.phase = 'END';
@@ -563,8 +563,8 @@ export default function App() {
       if (bothMatch) {
         const val = parseInt(bothMatch[1]);
         state.players.forEach((p) => {
-          p.upperDurability = Math.max(0, Math.min(100, p.upperDurability + val));
-          p.lowerDurability = Math.max(0, Math.min(100, p.lowerDurability + val));
+          setEquippedItemDurability(p, 'Upper', p.upperDurability + val);
+          setEquippedItemDurability(p, 'Lower', p.lowerDurability + val);
           recalculatePlayerStats(p);
         });
       }
@@ -573,7 +573,7 @@ export default function App() {
     if (upperMatch && state.players && !actualEffects.includes('Upper/Lower耐久')) {
       const val = parseInt(upperMatch[1]);
       state.players.forEach((p) => {
-        p.upperDurability = Math.max(0, Math.min(100, p.upperDurability + val));
+        setEquippedItemDurability(p, 'Upper', p.upperDurability + val);
         recalculatePlayerStats(p);
       });
     }
@@ -581,7 +581,7 @@ export default function App() {
     if (lowerMatch && state.players && !actualEffects.includes('Upper/Lower耐久')) {
       const val = parseInt(lowerMatch[1]);
       state.players.forEach((p) => {
-        p.lowerDurability = Math.max(0, Math.min(100, p.lowerDurability + val));
+        setEquippedItemDurability(p, 'Lower', p.lowerDurability + val);
         recalculatePlayerStats(p);
       });
     }
@@ -731,7 +731,7 @@ export default function App() {
                   <StatBar label="DES" value={p.des} max={100} type="des" />
 
                   <div className="mt-1 text-sm text-dim">
-                    STR:{p.str} AGI:{p.agi} WIL:{p.wil} DR:{p.drPercent}%
+                    STR:{getEffectivePlayerStat(p, 'str')} AGI:{getEffectivePlayerStat(p, 'agi')} WIL:{getEffectivePlayerStat(p, 'wil')} DR:{p.drPercent}%
                     {p.ampPercent > 0 && ` 增傷:+${p.ampPercent}%`}
                     {p.flatDr > 0 && ` 減傷:-${p.flatDr}`}
                   </div>
@@ -1175,7 +1175,7 @@ export default function App() {
                 ))}
               </div>
             )}
-            {state.phase === 'END' && (
+            {(state.phase === 'badEnd' || state.phase === 'END') && (
               <div className="action-buttons">
                 <div style={{ marginBottom: '0.8rem', color: 'var(--hp-low)', fontWeight: 'bold', textAlign: 'center' }}>
                   {state.endReason === 'protagonist_hp' && '【Bad End — 死亡】主角的生命耗盡，倒在黑暗之中。'}
@@ -1251,8 +1251,9 @@ export default function App() {
             if (changes.hp_delta) { player.hp = Math.min(player.maxHp, player.hp + changes.hp_delta); effects.push(`HP +${changes.hp_delta}`); }
             if (changes.sp_delta) { player.sp = Math.min(player.maxSp, player.sp + changes.sp_delta); effects.push(`SP +${changes.sp_delta}`); }
             if (changes.des_delta) { player.des = Math.max(0, Math.min(100, player.des + changes.des_delta)); effects.push(`DES ${changes.des_delta > 0 ? '+' : ''}${changes.des_delta}`); }
-            if (changes.dr_u_delta) { player.upperDurability = Math.min(100, player.upperDurability + changes.dr_u_delta); effects.push(`上衣耐久 +${changes.dr_u_delta}`); }
-            if (changes.dr_l_delta) { player.lowerDurability = Math.min(100, player.lowerDurability + changes.dr_l_delta); effects.push(`下衣耐久 +${changes.dr_l_delta}`); }
+            if (changes.dr_u_delta) { setEquippedItemDurability(player, 'Upper', player.upperDurability + changes.dr_u_delta); effects.push(`上衣耐久 +${changes.dr_u_delta}`); }
+            if (changes.dr_l_delta) { setEquippedItemDurability(player, 'Lower', player.lowerDurability + changes.dr_l_delta); effects.push(`下衣耐久 +${changes.dr_l_delta}`); }
+            recalculatePlayerStats(player);
             item.quantity--;
             if (item.quantity <= 0) state.inventory.splice(state.inventory.indexOf(item), 1);
             const effectStr = effects.length > 0 ? effects.join('、') : '無立即效果';
@@ -1261,25 +1262,42 @@ export default function App() {
             setState({ ...state });
             requestAINarrative(state, undefined, `${player.name} 從背包取出【${item.name}】服用，${effectStr}。`);
           }}
-          onEquipWeapon={(itemId) => {
+          onEquipItem={(itemId) => {
             const protagonist = state.players?.find((player) => player.isProtagonist);
             const itemIndex = state.inventory.findIndex((i) => i.id === itemId);
             if (!protagonist || itemIndex === -1) return;
 
             const item = state.inventory[itemIndex];
-            const previousWeaponName = protagonist.equippedWeapon?.name;
-            const previousWeapon = equipProtagonistWeapon(protagonist, item);
-            if (!protagonist.equippedWeapon) return;
+            const slotLabel =
+              item.equipSlot === 'Weapon' ? '武器' : item.equipSlot === 'Upper' ? '上裝' : item.equipSlot === 'Lower' ? '下裝' : '裝備';
+            const previousItemName =
+              item.equipSlot === 'Weapon'
+                ? protagonist.equippedWeapon?.name
+                : item.equipSlot === 'Upper'
+                  ? protagonist.equippedUpper?.name
+                  : item.equipSlot === 'Lower'
+                    ? protagonist.equippedLower?.name
+                    : undefined;
+            const previousItem = equipProtagonistEquipment(protagonist, item);
+            const equippedItem =
+              item.equipSlot === 'Weapon'
+                ? protagonist.equippedWeapon
+                : item.equipSlot === 'Upper'
+                  ? protagonist.equippedUpper
+                  : item.equipSlot === 'Lower'
+                    ? protagonist.equippedLower
+                    : null;
+            if (!equippedItem) return;
 
             state.inventory.splice(itemIndex, 1);
-            if (previousWeapon) state.inventory.push(previousWeapon);
+            if (previousItem) state.inventory.push(previousItem);
 
             addLogEntry(
               state,
               'system',
-              previousWeaponName
-                ? `主角將武器從【${previousWeaponName}】更換為【${protagonist.equippedWeapon.name}】`
-                : `主角裝備了【${protagonist.equippedWeapon.name}】`,
+              previousItemName
+                ? `主角將${slotLabel}從【${previousItemName}】更換為【${equippedItem.name}】`
+                : `主角裝備了【${equippedItem.name}】`,
             );
             saveGame(state);
             setState({ ...state });
@@ -1381,11 +1399,11 @@ function SettingsModal({ config, onSave, onClose }: {
   );
 }
 
-function BackpackModal({ inventory, players, onUseItem, onEquipWeapon, onClose }: {
+function BackpackModal({ inventory, players, onUseItem, onEquipItem, onClose }: {
   inventory: import('./types').InventoryItem[];
   players: [import('./types').PlayerState, import('./types').PlayerState];
   onUseItem: (itemId: string, playerIndex: number) => void;
-  onEquipWeapon: (itemId: string) => void;
+  onEquipItem: (itemId: string) => void;
   onClose: () => void;
 }) {
   const [selectingPlayerFor, setSelectingPlayerFor] = useState<string | null>(null);
@@ -1393,7 +1411,14 @@ function BackpackModal({ inventory, players, onUseItem, onEquipWeapon, onClose }
   const protagonist = players.find((player) => player.isProtagonist) ?? null;
   const usableItems = inventory.filter(i => i.type === 'potion' && i.quantity > 0 && i.stateChanges && Object.keys(i.stateChanges).length > 0);
   const weaponItems = inventory.filter((i) => i.type === 'weapon' && i.quantity > 0);
-  const otherItems = inventory.filter(i => i.type !== 'weapon' && !(i.type === 'potion' && i.stateChanges && Object.keys(i.stateChanges).length > 0));
+  const upperArmorItems = inventory.filter((i) => i.type === 'armor_upper' && i.quantity > 0);
+  const lowerArmorItems = inventory.filter((i) => i.type === 'armor_lower' && i.quantity > 0);
+  const otherItems = inventory.filter(i =>
+    i.type !== 'weapon' &&
+    i.type !== 'armor_upper' &&
+    i.type !== 'armor_lower' &&
+    !(i.type === 'potion' && i.stateChanges && Object.keys(i.stateChanges).length > 0),
+  );
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -1449,7 +1474,6 @@ function BackpackModal({ inventory, players, onUseItem, onEquipWeapon, onClose }
           <div style={{ marginBottom: '1rem' }}>
             <div className="panel-title" style={{ marginBottom: '0.5rem' }}>可裝備武器</div>
             {weaponItems.map((item) => {
-              const isEquipped = protagonist?.equippedWeapon?.templateId === item.templateId;
               return (
                 <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--border)' }}>
                   <div>
@@ -1459,18 +1483,76 @@ function BackpackModal({ inventory, players, onUseItem, onEquipWeapon, onClose }
                       {typeof item.ampPercent === 'number' && <span style={{ color: 'var(--text-dim)' }}> / AMP +{item.ampPercent}%</span>}
                       {typeof item.flatDr === 'number' && <span style={{ color: 'var(--text-dim)' }}> / DR +{item.flatDr}</span>}
                     </div>
-                    {isEquipped && <div className="text-sm" style={{ color: 'var(--sp-color)' }}>目前裝備中</div>}
+                    {protagonist?.equippedWeapon?.templateId === item.templateId && <div className="text-sm" style={{ color: 'var(--sp-color)' }}>與目前武器同型</div>}
                   </div>
                   <button
                     className="btn btn-sm btn-primary"
-                    disabled={selectingPlayerFor !== null || isEquipped || !item.templateId}
-                    onClick={() => onEquipWeapon(item.id)}
+                    disabled={selectingPlayerFor !== null || !item.templateId}
+                    onClick={() => onEquipItem(item.id)}
                   >
                     裝備
                   </button>
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {upperArmorItems.length > 0 && (
+          <div style={{ marginBottom: '1rem' }}>
+            <div className="panel-title" style={{ marginBottom: '0.5rem' }}>可裝備上裝</div>
+            {upperArmorItems.map((item) => (
+              <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--border)' }}>
+                <div>
+                  <div className="text-sm" style={{ color: 'var(--text-primary)' }}>
+                    {item.name}
+                    {typeof item.drU === 'number' && <span style={{ color: 'var(--text-dim)' }}> / DRU {item.drU}</span>}
+                    {typeof item.flatDr === 'number' && <span style={{ color: 'var(--text-dim)' }}> / Flat DR +{item.flatDr}</span>}
+                    {typeof item.ampPercent === 'number' && <span style={{ color: 'var(--text-dim)' }}> / AMP +{item.ampPercent}%</span>}
+                  </div>
+                  <div className="text-sm" style={{ color: 'var(--text-dim)' }}>
+                    耐久 {item.durability ?? item.durabilityMax ?? 100}/{item.durabilityMax ?? 100}
+                  </div>
+                  {protagonist?.equippedUpper?.templateId === item.templateId && <div className="text-sm" style={{ color: 'var(--sp-color)' }}>與目前上裝同型</div>}
+                </div>
+                <button
+                  className="btn btn-sm btn-primary"
+                  disabled={selectingPlayerFor !== null || !item.templateId}
+                  onClick={() => onEquipItem(item.id)}
+                >
+                  裝備
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {lowerArmorItems.length > 0 && (
+          <div style={{ marginBottom: '1rem' }}>
+            <div className="panel-title" style={{ marginBottom: '0.5rem' }}>可裝備下裝</div>
+            {lowerArmorItems.map((item) => (
+              <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--border)' }}>
+                <div>
+                  <div className="text-sm" style={{ color: 'var(--text-primary)' }}>
+                    {item.name}
+                    {typeof item.drL === 'number' && <span style={{ color: 'var(--text-dim)' }}> / DRL {item.drL}</span>}
+                    {typeof item.flatDr === 'number' && <span style={{ color: 'var(--text-dim)' }}> / Flat DR +{item.flatDr}</span>}
+                    {typeof item.ampPercent === 'number' && <span style={{ color: 'var(--text-dim)' }}> / AMP +{item.ampPercent}%</span>}
+                  </div>
+                  <div className="text-sm" style={{ color: 'var(--text-dim)' }}>
+                    耐久 {item.durability ?? item.durabilityMax ?? 100}/{item.durabilityMax ?? 100}
+                  </div>
+                  {protagonist?.equippedLower?.templateId === item.templateId && <div className="text-sm" style={{ color: 'var(--sp-color)' }}>與目前下裝同型</div>}
+                </div>
+                <button
+                  className="btn btn-sm btn-primary"
+                  disabled={selectingPlayerFor !== null || !item.templateId}
+                  onClick={() => onEquipItem(item.id)}
+                >
+                  裝備
+                </button>
+              </div>
+            ))}
           </div>
         )}
 

@@ -2,6 +2,7 @@ import type { Phase, GameState, EnemyState, MonsterDef } from '../types';
 import { scaleMonster, getMonstersByTier } from '../data/monsters';
 import { percentCheck, randomInt } from './diceEngine';
 import { getRandomEvent } from '../data/events';
+import { recalculatePlayerStats, setEquippedItemDurability } from './stateManager';
 
 // ============================================================
 // Phase Engine - manages game phase transitions and flow
@@ -12,11 +13,12 @@ const VALID_TRANSITIONS: Record<Phase, Phase[]> = {
   INIT: ['CUSTOM'],
   CUSTOM: ['EXPLORE'],
   EXPLORE: ['COMBAT', 'EVENT', 'REST'],
-  COMBAT: ['REST', 'SPECIAL', 'END'],
+  COMBAT: ['REST', 'SPECIAL', 'badEnd', 'END'],
   EVENT: ['COMBAT', 'REST', 'EXPLORE', 'SPECIAL'],
   REST: ['EXPLORE', 'EVENT', 'SHOP', 'END'],
   SHOP: ['REST', 'EXPLORE'],
-  SPECIAL: ['EXPLORE', 'REST', 'COMBAT', 'END'],
+  SPECIAL: ['EXPLORE', 'REST', 'COMBAT', 'badEnd', 'END'],
+  badEnd: ['INIT'],
   END: ['INIT'],
 };
 
@@ -260,19 +262,23 @@ export function processRestAction(
 
       for (const p of state.players) {
         if (p.upperDurability < 100 && state.inventory[matIndex].quantity > 0) {
-          p.upperDurability = Math.min(100, p.upperDurability + 30);
+          setEquippedItemDurability(p, 'Upper', p.upperDurability + 30);
           state.inventory[matIndex].quantity--;
           materialsUsed++;
           repairedCount++;
         }
-        if (state.inventory[matIndex].quantity === 0) break;
+        if (state.inventory[matIndex].quantity === 0) {
+          recalculatePlayerStats(p);
+          break;
+        }
 
         if (p.lowerDurability < 100 && state.inventory[matIndex].quantity > 0) {
-          p.lowerDurability = Math.min(100, p.lowerDurability + 30);
+          setEquippedItemDurability(p, 'Lower', p.lowerDurability + 30);
           state.inventory[matIndex].quantity--;
           materialsUsed++;
           repairedCount++;
         }
+        recalculatePlayerStats(p);
         if (state.inventory[matIndex].quantity === 0) break;
       }
 

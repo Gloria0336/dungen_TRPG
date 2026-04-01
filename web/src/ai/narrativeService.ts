@@ -155,7 +155,7 @@ export function buildSceneSummary(
   }
 
   // Protagonist BE narrative directive
-  if (state.phase === 'END' && state.endReason) {
+  if ((state.phase === 'badEnd' || state.phase === 'END') && state.endReason) {
     const protagonist = state.players?.find(p => p.isProtagonist);
     if (protagonist) {
       if (state.endReason === 'protagonist_hp') {

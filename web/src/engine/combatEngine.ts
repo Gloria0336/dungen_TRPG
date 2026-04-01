@@ -26,7 +26,7 @@ export function determineTurnOrder(
         entityName: `${p.name} (${p.className})`,
         isPlayer: true,
         playerIndex: i,
-        agi: p.agi,
+        agi: getEffectivePlayerStat(p, 'agi'),
       });
     }
   });
@@ -59,7 +59,7 @@ export function getExpectedRounds(enemies: EnemyState[]): number {
 /** Calculate base ATK */
 export function calculateATK(player: PlayerState): number {
   const weaponATK = player.equippedWeapon?.atk ?? 0;
-  return Math.floor(player.str / 2) + weaponATK;
+  return Math.floor(getEffectivePlayerStat(player, 'str') / 2) + weaponATK;
 }
 
 /** Calculate raw damage with random factor */
@@ -284,6 +284,13 @@ export function getStatusEffectMod(
     .reduce((sum, se) => sum + (se.amount ?? 0), 0);
 }
 
+export function getEffectivePlayerStat(
+  player: Pick<PlayerState, 'agi' | 'str' | 'wil' | 'statusEffects'>,
+  stat: 'agi' | 'str' | 'wil'
+): number {
+  return Math.max(0, player[stat] + getStatusEffectMod(player.statusEffects, stat));
+}
+
 function getBodySkillLevel(player: PlayerState, skillId: string): number {
   return player.bodySkillSlots.find((slot) => slot?.skillId === skillId)?.level ?? 0;
 }
@@ -363,18 +370,6 @@ function applyStatusEffect(
 ): void {
   target.statusEffects.push(effect);
 
-  if (effect.type === 'statMod' && effect.targetStat && effect.amount) {
-    if (effect.targetStat === 'agi' && typeof target.agi === 'number') {
-      target.agi = Math.max(0, target.agi + effect.amount);
-    }
-    if (effect.targetStat === 'wil' && typeof target.wil === 'number') {
-      target.wil = Math.max(0, target.wil + effect.amount);
-    }
-    if (effect.targetStat === 'str' && typeof target.str === 'number') {
-      target.str = Math.max(0, target.str + effect.amount);
-    }
-  }
-
   if (effect.type === 'buff' && effect.targetStat === 'skillDr' && effect.amount && typeof target.skillDrPercent === 'number') {
     target.skillDrPercent = Math.max(-80, Math.min(80, target.skillDrPercent + effect.amount));
   }
@@ -388,18 +383,6 @@ function removeExpiredStatusEffect(
   target: StatusEffectCarrier,
   effect: StatusEffect
 ): void {
-  if (effect.type === 'statMod' && effect.targetStat && effect.amount) {
-    if (effect.targetStat === 'agi' && typeof target.agi === 'number') {
-      target.agi = Math.max(0, target.agi - effect.amount);
-    }
-    if (effect.targetStat === 'wil' && typeof target.wil === 'number') {
-      target.wil = Math.max(0, target.wil - effect.amount);
-    }
-    if (effect.targetStat === 'str' && typeof target.str === 'number') {
-      target.str = Math.max(0, target.str - effect.amount);
-    }
-  }
-
   if (effect.type === 'buff' && effect.targetStat === 'skillDr' && effect.amount && typeof target.skillDrPercent === 'number') {
     target.skillDrPercent = Math.max(-80, Math.min(80, target.skillDrPercent - effect.amount));
   }
@@ -432,7 +415,7 @@ function applyFormulaSelfEffects(
   if (!formula) return;
 
   if (formula.baseHeal) {
-    const scaling = formula.healScalingStat ? player[formula.healScalingStat] * (formula.healScalingFactor ?? 0) : 0;
+    const scaling = formula.healScalingStat ? getEffectivePlayerStat(player, formula.healScalingStat) * (formula.healScalingFactor ?? 0) : 0;
     const healAmount = Math.round(formula.baseHeal + scaling);
     const beforeHp = player.hp;
     player.hp = Math.min(player.maxHp, player.hp + healAmount);
@@ -441,7 +424,7 @@ function applyFormulaSelfEffects(
 
   if (formula.restoreSp) {
     const restoreSpScaling = formula.restoreSpScalingStat
-      ? player[formula.restoreSpScalingStat] * (formula.restoreSpScalingFactor ?? 0)
+        ? getEffectivePlayerStat(player, formula.restoreSpScalingStat) * (formula.restoreSpScalingFactor ?? 0)
       : 0;
     const beforeSp = player.sp;
     player.sp = Math.min(player.maxSp, player.sp + Math.round(formula.restoreSp + restoreSpScaling));
@@ -450,7 +433,7 @@ function applyFormulaSelfEffects(
 
   if (formula.restoreDes) {
     const restoreDesScaling = formula.restoreDesScalingStat
-      ? player[formula.restoreDesScalingStat] * (formula.restoreDesScalingFactor ?? 0)
+        ? getEffectivePlayerStat(player, formula.restoreDesScalingStat) * (formula.restoreDesScalingFactor ?? 0)
       : 0;
     const beforeDes = player.des;
     player.des = Math.max(0, player.des - Math.round(formula.restoreDes + restoreDesScaling));
@@ -528,7 +511,7 @@ function executeFormulaAttack(
   if (targetEffect) applyStatusEffect(target, targetEffect);
 
   if (formula.controlTurns) {
-    const controlChance = 35 + player.wil * 2 + (skill.level ?? 1) * 5;
+    const controlChance = 35 + getEffectivePlayerStat(player, 'wil') * 2 + (skill.level ?? 1) * 5;
     const controlResult = percentCheck(controlChance - target.controlResistCount * 20, '?批瑼Ｗ?');
     result.diceResults.push(controlResult);
     if (controlResult.success) {
@@ -651,7 +634,7 @@ export function processEnemyAttack(
     // Check player dodge (apply evade status effect mod)
     const evadeMod = getStatusEffectMod(player.statusEffects, 'evade');
     const evadeResult = evadeCheck(
-      Math.floor(player.agi * 3) + evadeMod + getPassiveEvadeBonus(player),
+      Math.floor(getEffectivePlayerStat(player, 'agi') * 3) + evadeMod + getPassiveEvadeBonus(player),
       player.isControlled,
       softPenalty,
       `${player.name} ??文?`
@@ -929,7 +912,7 @@ function processPlayerActionSingle(
 
           // Control effect on enemy
           if (skill.effectSummary.includes('?批')) {
-            const controlChance = 30 + (player.wil * 2);
+        const controlChance = 30 + (getEffectivePlayerStat(player, 'wil') * 2);
             const controlResult = percentCheck(
               controlChance - (target.controlResistCount * 20),
               '?批?文?'
@@ -1028,7 +1011,7 @@ function processPlayerActionSingle(
     case 'flee': {
       result.action = '?岫??';
       const fleeResult = percentCheck(
-        30 + player.agi * 3,
+        30 + getEffectivePlayerStat(player, 'agi') * 3,
         '???文?'
       );
       result.diceResults.push(fleeResult);
@@ -1069,7 +1052,7 @@ function applySupportSkillEffect(
   if (skill.formula) {
     const formula = skill.formula;
     if (formula.baseHeal) {
-      const scaling = formula.healScalingStat ? caster[formula.healScalingStat] * (formula.healScalingFactor ?? 0) : 0;
+      const scaling = formula.healScalingStat ? getEffectivePlayerStat(caster, formula.healScalingStat) * (formula.healScalingFactor ?? 0) : 0;
       const healAmount = Math.round(formula.baseHeal + scaling);
       const beforeHp = target.hp;
       target.hp = Math.min(target.maxHp, target.hp + healAmount);
@@ -1078,7 +1061,7 @@ function applySupportSkillEffect(
 
     if (formula.restoreSp) {
       const restoreSpScaling = formula.restoreSpScalingStat
-        ? caster[formula.restoreSpScalingStat] * (formula.restoreSpScalingFactor ?? 0)
+        ? getEffectivePlayerStat(caster, formula.restoreSpScalingStat) * (formula.restoreSpScalingFactor ?? 0)
         : 0;
       const beforeSp = target.sp;
       target.sp = Math.min(target.maxSp, target.sp + Math.round(formula.restoreSp + restoreSpScaling));
@@ -1087,7 +1070,7 @@ function applySupportSkillEffect(
 
     if (formula.restoreDes) {
       const restoreDesScaling = formula.restoreDesScalingStat
-        ? caster[formula.restoreDesScalingStat] * (formula.restoreDesScalingFactor ?? 0)
+        ? getEffectivePlayerStat(caster, formula.restoreDesScalingStat) * (formula.restoreDesScalingFactor ?? 0)
         : 0;
       const beforeDes = target.des;
       target.des = Math.max(0, target.des - Math.round(formula.restoreDes + restoreDesScaling));
@@ -1174,7 +1157,7 @@ function buildEnemyAllSkillResult(
   if (target.hp <= 0) target.isAlive = false;
 
   if (skill.effectSummary.includes('?批')) {
-    const controlChance = 30 + (player.wil * 2);
+      const controlChance = 30 + (getEffectivePlayerStat(player, 'wil') * 2);
     const controlResult = percentCheck(
       controlChance - (target.controlResistCount * 20),
       '?批?文?'

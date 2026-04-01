@@ -13,6 +13,7 @@ export type Phase =
   | 'REST'
   | 'SHOP'
   | 'SPECIAL'
+  | 'badEnd'
   | 'END';
 
 export type MonsterTier = 'A' | 'B' | 'C';
