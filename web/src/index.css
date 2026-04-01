@@ -332,6 +332,158 @@ html, body, #root {
   transition: width 0.3s ease;
 }
 
+/* ============ Ending Screen ============ */
+.ending-screen {
+  min-height: 100vh;
+  padding: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at top, rgba(225, 29, 72, 0.18), transparent 36%),
+    radial-gradient(circle at 85% 20%, rgba(139, 92, 246, 0.2), transparent 28%),
+    linear-gradient(180deg, #160711 0%, #09090f 100%);
+}
+
+.ending-shell {
+  width: min(980px, 100%);
+  min-height: min(88vh, 820px);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 2rem;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(16, 16, 24, 0.92), rgba(10, 10, 18, 0.98));
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.ending-shell.protagonist_hp {
+  box-shadow: 0 24px 90px rgba(239, 68, 68, 0.15);
+}
+
+.ending-shell.protagonist_des {
+  box-shadow: 0 24px 90px rgba(225, 29, 72, 0.18);
+}
+
+.ending-shell.party_wipe {
+  box-shadow: 0 24px 90px rgba(59, 130, 246, 0.12);
+}
+
+.ending-hero {
+  position: relative;
+  padding: 1.6rem 1.8rem;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(135deg, rgba(225, 29, 72, 0.16), rgba(139, 92, 246, 0.1)),
+    rgba(255, 255, 255, 0.02);
+}
+
+.ending-kicker {
+  margin-bottom: 0.7rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.ending-title {
+  font-size: clamp(2.8rem, 8vw, 5.4rem);
+  line-height: 0.95;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff3f5;
+  text-shadow: 0 0 32px rgba(225, 29, 72, 0.18);
+}
+
+.ending-subtitle {
+  margin-top: 0.8rem;
+  color: var(--text-secondary);
+  font-size: 1rem;
+}
+
+.ending-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.8fr);
+  gap: 1rem;
+}
+
+.ending-card,
+.ending-actions {
+  min-height: 0;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+}
+
+.ending-card {
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem;
+}
+
+.ending-card-title {
+  margin-bottom: 1rem;
+  color: #fca5a5;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.ending-narrative {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.4rem;
+  line-height: 1.85;
+  color: var(--text-primary);
+}
+
+.ending-narrative p + p {
+  margin-top: 0.9rem;
+}
+
+.ending-loading {
+  flex: 1;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.ending-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.1rem;
+  padding: 1.4rem;
+}
+
+.ending-prompt {
+  color: var(--text-primary);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.ending-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.ending-action-row .btn {
+  flex: 1 1 180px;
+}
+
 /* ============ Settings Modal ============ */
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.7);
@@ -441,6 +593,29 @@ html, body, #root {
 @media screen and (max-width: 430px) {
   .game-screen {
     display: flex; flex-direction: column;
+  }
+  .ending-screen {
+    padding: 1rem;
+  }
+  .ending-shell {
+    min-height: calc(100dvh - 2rem);
+    padding: 1rem;
+    border-radius: 20px;
+  }
+  .ending-hero {
+    padding: 1.1rem;
+  }
+  .ending-body {
+    grid-template-columns: 1fr;
+  }
+  .ending-card {
+    min-height: 42dvh;
+  }
+  .ending-actions {
+    padding: 1.1rem;
+  }
+  .ending-action-row .btn {
+    flex-basis: 100%;
   }
   .center-area {
     height: 100dvh;

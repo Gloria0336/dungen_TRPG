@@ -77,6 +77,34 @@ const STATUS_EFFECT_COLORS: Record<StatusEffectCategory, string> = {
   curse: 'var(--hp-low)',
 };
 
+type EndingReason = NonNullable<GameState['endReason']>;
+
+const EMPTY_BIO_INPUTS: [BioInput, BioInput] = [
+  { race: '', age: '', appearance: '', background: '' },
+  { race: '', age: '', appearance: '', background: '' }
+];
+
+const ENDING_COPY: Record<EndingReason, { label: string; heading: string; prompt: string; fallback: string }> = {
+  protagonist_hp: {
+    label: 'Bad End',
+    heading: '死亡',
+    prompt: '主角的生命已走到盡頭。要立刻重新開始新的冒險嗎？',
+    fallback: '主角在地牢深處力竭倒下，呼吸與意志一同熄滅。這趟冒險以最沉重的方式終結，只剩冰冷的黑暗吞沒她的名字。'
+  },
+  protagonist_des: {
+    label: 'Bad End',
+    heading: '崩潰',
+    prompt: '主角的理智已完全崩解。要立刻重新開始新的冒險嗎？',
+    fallback: '絕望值突破極限後，主角最後一絲自我也被撕裂，曾經支撐她前進的信念徹底瓦解，只留下無法回頭的沉淪。'
+  },
+  party_wipe: {
+    label: 'Game Over',
+    heading: '隊伍全滅',
+    prompt: '隊伍已無力再戰。要立刻重新開始新的冒險嗎？',
+    fallback: '戰線在混亂中全面潰散，隊伍再也沒有人能站起來。地牢重新恢復死寂，而這次遠征也到此為止。'
+  },
+};
+
 function formatStatusEffectMeta(effect: StatusEffect): string {
   const normalized = normalizeStatusEffect(effect);
   if (typeof normalized.duration === 'number') {
@@ -150,6 +178,7 @@ export default function App() {
   const [actionState, setActionState] = useState<ActionSelectionState>({ type: 'main' });
   const [showBackpackModal, setShowBackpackModal] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const narrativeRequestIdRef = useRef(0);
 
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [state?.log.length, narrativeText]);
   useEffect(() => {
@@ -171,16 +200,29 @@ export default function App() {
     gs: GameState, results?: CombatTurnResult[], extra?: string, skipAutoTrigger?: boolean, isMidCombat?: boolean
   ) => {
     if (!config.apiKey) return;
+    const requestId = ++narrativeRequestIdRef.current;
     setIsStreaming(true); setNarrativeText('');
     let full = '';
     try {
       for await (const chunk of requestNarrative(config.apiKey, config.modelId, gs, results, extra, isMidCombat)) {
+        if (requestId !== narrativeRequestIdRef.current) {
+          return;
+        }
         full += chunk; setNarrativeText(full);
+      }
+      if (requestId !== narrativeRequestIdRef.current) {
+        return;
       }
       addNarrativeToHistory(gs, full);
       addLogEntry(gs, 'narrative', full);
     } catch (e: any) {
+      if (requestId !== narrativeRequestIdRef.current) {
+        return;
+      }
       addLogEntry(gs, 'system', `❌ AI 錯誤: ${e.message}`);
+    }
+    if (requestId !== narrativeRequestIdRef.current) {
+      return;
     }
     setIsStreaming(false);
     setState({ ...gs });
@@ -208,6 +250,40 @@ export default function App() {
     }
   }, [config]);
 
+  const resetSessionUi = useCallback(() => {
+    narrativeRequestIdRef.current += 1;
+    setInitSubPhase('PROTAGONIST_SETUP');
+    setClassSelection(['CL-PROT', '']);
+    setPlayerNames(['', '']);
+    setPlayerBios(EMPTY_BIO_INPUTS);
+    setBiographyText('');
+    setNarrativeText('');
+    setIsStreaming(false);
+    setActionState({ type: 'main' });
+    setShowPlayerPanel(false);
+    setShowLogPanel(false);
+    setShowFullLog(false);
+    setShowBackpackModal(false);
+    setShowSettings(false);
+  }, []);
+
+  const beginNewAdventure = useCallback(() => {
+    const gs = createNewRun();
+    gs.nsgEnabled = config.nsgEnabled;
+    resetSessionUi();
+    setState(gs);
+    setScreen('game');
+    addLogEntry(gs, 'system', `新冒險開始！Run ID: ${gs.runId}`);
+    addLogEntry(gs, 'system', `商人出現點: 第${gs.shopFloors[0]}層、第${gs.shopFloors[1]}層`);
+  }, [config.nsgEnabled, resetSessionUi]);
+
+  const returnToTitle = useCallback(() => {
+    deleteSave();
+    resetSessionUi();
+    setState(null);
+    setScreen('start');
+  }, [resetSessionUi]);
+
   // --- Start Screen ---
   if (screen === 'start') {
     return (
@@ -216,18 +292,7 @@ export default function App() {
           <h1 className="start-title">地牢探索</h1>
           <p className="start-subtitle">通用回合制地牢探索系統 v1.4</p>
           <div className="start-buttons">
-            <button className="btn btn-primary" onClick={() => {
-              const gs = createNewRun();
-              gs.nsgEnabled = config.nsgEnabled;
-              setInitSubPhase('PROTAGONIST_SETUP');
-              setClassSelection(['CL-PROT', '']);
-              setPlayerNames(['', '']);
-              setPlayerBios([{ race: '', age: '', appearance: '', background: '' }, { race: '', age: '', appearance: '', background: '' }]);
-              setBiographyText('');
-              setState(gs); setScreen('game');
-              addLogEntry(gs, 'system', `新冒險開始！Run ID: ${gs.runId}`);
-              addLogEntry(gs, 'system', `商人出現點: 第${gs.shopFloors[0]}層、第${gs.shopFloors[1]}層`);
-            }}>開始新冒險</button>
+            <button className="btn btn-primary" onClick={beginNewAdventure}>開始新冒險</button>
             {hasSave() && <button className="btn" onClick={() => {
               const gs = loadGame();
               if (gs) { setState(gs); setScreen('game'); }
@@ -504,6 +569,7 @@ export default function App() {
           state.phase = 'badEnd';
           addLogEntry(state, 'system', '💀 主角絕望值達到上限（DES 100），冒險終結。');
         } else if (state.players.every(p => !p.isAlive || p.isBD)) {
+          state.endReason = 'party_wipe';
           state.phase = 'END';
           addLogEntry(state, 'system', '💀 隊伍全滅，冒險結束。');
         }
@@ -754,13 +820,7 @@ export default function App() {
   const handleRestart = () => {
     if (window.confirm('確定要放棄當前進度並重新開始嗎？')) {
       deleteSave();
-      setScreen('start');
-      setInitSubPhase('PROTAGONIST_SETUP');
-      setClassSelection(['CL-PROT', '']);
-      setPlayerNames(['', '']);
-      setPlayerBios([{ race: '', age: '', appearance: '', background: '' }, { race: '', age: '', appearance: '', background: '' }]);
-      setBiographyText('');
-      setState(null);
+      beginNewAdventure();
     }
   };
 
@@ -784,7 +844,68 @@ export default function App() {
   // --- Render Game ---
   const aliveEnemies = state.enemies.filter(e => e.isAlive);
   const visibleLogEntries = state.log.slice(-50);
+  const isEndingPhase = state.phase === 'badEnd' || state.phase === 'END';
+  const effectiveEndReason: EndingReason = state.endReason ?? (
+    state.phase === 'END'
+      ? 'party_wipe'
+      : protagonist?.isBD
+        ? 'protagonist_des'
+        : 'protagonist_hp'
+  );
+  const latestLogEntry = state.log[state.log.length - 1];
+  const latestNarrativeText = latestLogEntry?.type === 'narrative' ? latestLogEntry.text : '';
+  const endingCopy = ENDING_COPY[effectiveEndReason];
   // Phase actions are rendered inline per phase
+
+  if (isEndingPhase) {
+    const endingNarrative = isStreaming ? narrativeText : latestNarrativeText;
+
+    return (
+      <>
+        <div className="ending-screen">
+          <div className={`ending-shell ${effectiveEndReason}`}>
+            <div className="ending-hero">
+              <div className="ending-kicker">{endingCopy.label}</div>
+              <h1 className="ending-title">Game Over</h1>
+              <p className="ending-subtitle">【{endingCopy.heading}】第 {state.floor} 層的冒險在此終結。</p>
+            </div>
+
+            <div className="ending-body">
+              <div className="ending-card">
+                <div className="ending-card-title">結局敘述</div>
+                {isStreaming && !narrativeText ? (
+                  <div className="ending-loading">
+                    <div className="typing-indicator"><span /><span /><span /></div>
+                    <span>正在生成最後的結局敘述...</span>
+                  </div>
+                ) : (
+                  <div className="ending-narrative">
+                    <ReactMarkdown>{endingNarrative || endingCopy.fallback}</ReactMarkdown>
+                  </div>
+                )}
+              </div>
+
+              <div className="ending-actions">
+                <p className="ending-prompt">{endingCopy.prompt}</p>
+                <div className="ending-action-row">
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      deleteSave();
+                      beginNewAdventure();
+                    }}
+                  >
+                    重新開始
+                  </button>
+                  <button className="btn" onClick={returnToTitle}>回到標題</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -1274,16 +1395,6 @@ export default function App() {
                 {['嘗試掙脫', '觀察環境', '保守應對'].map(a => (
                   <button key={a} className="action-btn" disabled={isStreaming} onClick={() => handleSpecialAction(a)}>{a}</button>
                 ))}
-              </div>
-            )}
-            {(state.phase === 'badEnd' || state.phase === 'END') && (
-              <div className="action-buttons">
-                <div style={{ marginBottom: '0.8rem', color: 'var(--hp-low)', fontWeight: 'bold', textAlign: 'center' }}>
-                  {state.endReason === 'protagonist_hp' && '【Bad End — 死亡】主角的生命耗盡，倒在黑暗之中。'}
-                  {state.endReason === 'protagonist_des' && '【Bad End — 崩潰】主角的意志徹底瓦解，沉淪於絕望。'}
-                  {!state.endReason && '冒險結束。'}
-                </div>
-                <button className="btn btn-primary" onClick={() => { deleteSave(); setScreen('start'); setState(null); }}>回到標題</button>
               </div>
             )}
           </div>

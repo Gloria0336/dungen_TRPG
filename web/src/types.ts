@@ -562,7 +562,7 @@ export interface GameState {
   narrativeHistory: NarrativeEntry[];
   exploreRestCount: number;
   pendingBodySkillDrop: PendingBodySkillDrop | null;
-  endReason?: 'protagonist_hp' | 'protagonist_des';
+  endReason?: 'protagonist_hp' | 'protagonist_des' | 'party_wipe';
 }
 
 export interface GameStateSnapshot {
