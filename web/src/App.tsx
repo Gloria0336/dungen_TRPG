@@ -2,7 +2,7 @@
 import ReactMarkdown from 'react-markdown';
 import type {
   GameState, GameConfig, CombatAction, CombatTurnResult,
-  GameLogEntry, EventOption,
+  GameLogEntry, EventOption, StatusEffect, StatusEffectCategory,
 } from './types';
 import { getAllCompanionClasses, PROTAGONIST_CLASS } from './data/classes';
 import { getBodySkillDef } from './data/skills';
@@ -13,9 +13,10 @@ import {
 } from './engine/stateManager';
 import {
   initCombat, processPlayerAction,
-  isCombatVictory, advanceCombat, getEffectivePlayerStat
+  isCombatVictory, advanceCombat, getEffectivePlayerStat, normalizeStatusEffect,
+  applyPlayerDesChange, applyStatusEffect, clearFloorExpiredStatusEffects,
 } from './engine/combatEngine';
-import { getEffectivePlayerDes, getPlayerPenaltySummary } from './engine/playerPenaltyEngine';
+import { getEffectivePlayerDes, getPlayerPenaltySummary, syncOutfitBreakControl } from './engine/playerPenaltyEngine';
 import { isAllyTargetingSkill, skillNeedsTargetSelection } from './engine/skillTargeting';
 import { generateEnemies, generateExploreEncounter, processRestAction } from './engine/phaseEngine';
 import {
@@ -60,6 +61,55 @@ function getSkillDescription(skill: { effectSummary: string; hitRule: string }):
     .filter((part, index, arr) => part.length > 0 && arr.indexOf(part) === index);
 
   return parts.join(' / ');
+}
+
+const STATUS_EFFECT_LABELS: Record<StatusEffectCategory, string> = {
+  buff: 'buff',
+  debuff: 'debuff',
+  blessing: '祝福',
+  curse: '詛咒',
+};
+
+const STATUS_EFFECT_COLORS: Record<StatusEffectCategory, string> = {
+  buff: 'var(--sp-color)',
+  debuff: 'var(--des-color)',
+  blessing: 'var(--hp-high)',
+  curse: 'var(--hp-low)',
+};
+
+function formatStatusEffectMeta(effect: StatusEffect): string {
+  const normalized = normalizeStatusEffect(effect);
+  if (typeof normalized.duration === 'number') {
+    return `${normalized.duration}回合`;
+  }
+  if (normalized.removalCondition) {
+    return `解除條件：${normalized.removalCondition}`;
+  }
+  return normalized.expiresOnBattleEnd ? '本戰鬥' : '條件解除前持續';
+}
+
+function getStatusEffectDisplayCategory(effect: StatusEffect): StatusEffectCategory {
+  return normalizeStatusEffect(effect).category ?? 'buff';
+}
+
+function removeAllOutfit(player: import('./types').PlayerState): boolean {
+  player.equippedUpper = null;
+  player.equippedLower = null;
+  player.upperDurability = 0;
+  player.lowerDurability = 0;
+  recalculatePlayerStats(player);
+  return syncOutfitBreakControl(player).applied;
+}
+
+function processFloorBasedStatusExpiry(gs: GameState): void {
+  if (!gs.players) return;
+
+  gs.players.forEach((player) => {
+    const removed = clearFloorExpiredStatusEffects(player, gs.floor);
+    removed.forEach((effect) => {
+      addLogEntry(gs, 'system', `${player.name} 的[${STATUS_EFFECT_LABELS[getStatusEffectDisplayCategory(effect)]}]【${effect.name}】已解除`);
+    });
+  });
 }
 
 function logCombatResult(gs: GameState, res: CombatTurnResult) {
@@ -338,6 +388,7 @@ export default function App() {
       addLogEntry(state, 'system', `在第 ${state.floor} 層停留過久，必須進入下一層了！`);
       state.exploreRestCount = 0;
       state.floor++;
+      processFloorBasedStatusExpiry(state);
       if (state.shopFloors.includes(state.floor)) {
         state.phase = 'SHOP';
         addLogEntry(state, 'system', `🏪 商人出現在第 ${state.floor} 層！`);
@@ -479,6 +530,7 @@ export default function App() {
         addLogEntry(state, 'system', `在第 ${state.floor} 層停留過久，必須進入下一層了！`);
         state.exploreRestCount = 0;
         state.floor++;
+        processFloorBasedStatusExpiry(state);
         if (state.shopFloors.includes(state.floor)) {
           state.phase = 'SHOP';
           addLogEntry(state, 'system', `🏪 商人出現在第 ${state.floor} 層！`);
@@ -497,6 +549,7 @@ export default function App() {
     if (index === 3 && result.phaseChange === 'EXPLORE') {
       state.exploreRestCount = 0;
       state.floor++;
+      processFloorBasedStatusExpiry(state);
       // Check shop
       if (state.shopFloors.includes(state.floor)) {
         state.phase = 'SHOP';
@@ -520,11 +573,11 @@ export default function App() {
 
     const effects = option.successEffects; // Simplified: usually events have distinct success/fail but labels imply the check
     let actualEffects = effects;
+    let wasSuccess = true;
 
     if (option.requiredCheck.includes('需持有')) {
-      actualEffects = hasEventRequirement(state.inventory, option.requiredCheck)
-        ? option.successEffects
-        : option.failEffects;
+      wasSuccess = hasEventRequirement(state.inventory, option.requiredCheck);
+      actualEffects = wasSuccess ? option.successEffects : option.failEffects;
     } else if (option.requiredCheck !== '無') {
       // Basic stat check logic
       const isAgi = option.requiredCheck.includes('AGI') || option.requiredCheck.includes('DEX');
@@ -544,6 +597,7 @@ export default function App() {
       const success = roll <= threshold;
 
       addLogEntry(state, 'dice', `【事件檢定】門檻: ${threshold}% | 擲骰: 1D100=${roll} → ${success ? '✓ 成功' : '✗ 失敗'}`);
+      wasSuccess = success;
       actualEffects = success ? option.successEffects : option.failEffects;
     }
 
@@ -558,7 +612,16 @@ export default function App() {
     const desMatch = actualEffects.match(/DES\s*([+-]\d+)/);
     if (desMatch && state.players) {
       const val = parseInt(desMatch[1]);
-      state.players.forEach(p => p.des = Math.max(0, Math.min(100, p.des + val)));
+      state.players.forEach((p) => {
+        applyPlayerDesChange(p, val);
+      });
+    }
+    if (actualEffects.includes('全身衣裝移除') && state.players) {
+      state.players.forEach((p) => {
+        if (removeAllOutfit(p)) {
+          addLogEntry(state, 'system', `${p.name} 因衣裝被剝除而被控制 1 回合！`);
+        }
+      });
     }
     if (actualEffects.includes('Upper/Lower耐久') && state.players) {
       const bothMatch = actualEffects.match(/Upper\/Lower耐久\s*([+-]\d+)/);
@@ -627,6 +690,26 @@ export default function App() {
       if (consumed) {
         addLogEntry(state, 'system', `🧪 消耗 ${itemName} x${quantity}`);
       }
+    }
+
+    const appliedStatusEffects = wasSuccess ? option.successStatusEffects : option.failStatusEffects;
+    if (appliedStatusEffects && state.players) {
+      state.players.forEach((player) => {
+        appliedStatusEffects.forEach((effect) => {
+          const normalized = normalizeStatusEffect({
+            ...effect,
+            expiresAtFloor:
+              effect.expiresAtFloor ??
+              ((effect.removalCondition?.includes('前進五層後自動解除') ?? false) ? state.floor + 5 : effect.expiresAtFloor),
+          });
+          applyStatusEffect(player, normalized);
+          addLogEntry(
+            state,
+            'system',
+            `${player.name} 獲得[${STATUS_EFFECT_LABELS[getStatusEffectDisplayCategory(normalized)]}]【${normalized.name}】`,
+          );
+        });
+      });
     }
 
     if (actualEffects.includes('Phase->COMBAT')) {
@@ -778,8 +861,11 @@ export default function App() {
                     <div className="text-sm" style={{ marginTop: '0.3rem' }}>
                       <div style={{ color: 'var(--text-secondary)' }}>狀態效果：</div>
                       {p.statusEffects.map((se, si) => (
-                        <div key={si} style={{ paddingLeft: '0.5rem', color: se.amount && se.amount < 0 ? 'var(--des-color)' : 'var(--sp-color)' }}>
-                          {se.name} ({se.effect}) - {se.duration}回合
+                        <div
+                          key={si}
+                          style={{ paddingLeft: '0.5rem', color: STATUS_EFFECT_COLORS[getStatusEffectDisplayCategory(se)] }}
+                        >
+                          [{STATUS_EFFECT_LABELS[getStatusEffectDisplayCategory(se)]}] {se.name} ({se.effect}) - {formatStatusEffectMeta(se)}
                         </div>
                       ))}
                     </div>
@@ -1265,7 +1351,10 @@ export default function App() {
             const changes = item.stateChanges || {};
             if (changes.hp_delta) { player.hp = Math.min(player.maxHp, player.hp + changes.hp_delta); effects.push(`HP +${changes.hp_delta}`); }
             if (changes.sp_delta) { player.sp = Math.min(player.maxSp, player.sp + changes.sp_delta); effects.push(`SP +${changes.sp_delta}`); }
-            if (changes.des_delta) { player.des = Math.max(0, Math.min(100, player.des + changes.des_delta)); effects.push(`DES ${changes.des_delta > 0 ? '+' : ''}${changes.des_delta}`); }
+            if (changes.des_delta) {
+              const appliedDesDelta = applyPlayerDesChange(player, changes.des_delta);
+              effects.push(`DES ${appliedDesDelta > 0 ? '+' : ''}${appliedDesDelta}`);
+            }
             if (changes.dr_u_delta) {
               if (setEquippedItemDurability(player, 'Upper', player.upperDurability + changes.dr_u_delta)) {
                 addLogEntry(state, 'system', `${player.name} 因衣裝破損而被控制 1 回合！`);

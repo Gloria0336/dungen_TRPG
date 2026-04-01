@@ -6,7 +6,7 @@ import { buildBodySkillRuntime } from '../data/skills';
 import { getRandomWeaponByTier, getWeaponDef } from '../data/weapons';
 import { determineShopFloors } from './shopEngine';
 import { assignAbsoluteCounter } from './counterEngine';
-import { calculateDR } from './combatEngine';
+import { calculateDR, normalizeStatusEffect } from './combatEngine';
 import { syncOutfitBreakControl } from './playerPenaltyEngine';
 
 // ============================================================
@@ -432,7 +432,7 @@ function hydratePlayer(player: PlayerState, index: number): PlayerState {
   player.outfitBreakControlTriggered = player.outfitBreakControlTriggered ?? (player.upperDurability <= 0 || player.lowerDurability <= 0);
   player.controlImmunity = player.controlImmunity ?? false;
   player.controlImmunityTurns = player.controlImmunityTurns ?? 0;
-  player.statusEffects = player.statusEffects ?? [];
+  player.statusEffects = (player.statusEffects ?? []).map(normalizeStatusEffect);
   player.backgroundTags = player.backgroundTags ?? [];
   player.narrativeTags = player.narrativeTags ?? [];
   player.skills = player.skills ?? [];
@@ -458,6 +458,10 @@ function hydratePlayer(player: PlayerState, index: number): PlayerState {
 
 function hydrateGameState(state: GameState): GameState {
   state.pendingBodySkillDrop = state.pendingBodySkillDrop ?? null;
+  state.enemies = (state.enemies ?? []).map((enemy) => ({
+    ...enemy,
+    statusEffects: (enemy.statusEffects ?? []).map(normalizeStatusEffect),
+  }));
   if (state.players) {
     state.players = [
       hydratePlayer(state.players[0], 0),

@@ -1,4 +1,4 @@
-import type { EventDef } from '../types';
+﻿import type { EventDef } from '../types';
 
 export const EVENT_DB: Record<string, EventDef> = {
   'EV-TRAP-001': {
@@ -119,7 +119,20 @@ export const EVENT_DB: Record<string, EventDef> = {
         id: 'OP-TRADE-001-A',
         label: '獻上肉體接受屈辱（無檢定）',
         requiredCheck: '無',
-        successEffects: 'Upper/Lower耐久 歸零；DES +50；全狀態恢復且HP上限 +10；Phase->REST',
+        successEffects: '全身衣裝移除；DES +30；獲得詛咒：DES增加效率*1.2（解除條件：前進五層後自動解除）；Phase->REST',
+        successStatusEffects: [
+          {
+            name: '淫紋烙印',
+            duration: null,
+            effect: 'DES增加效率 x1.2',
+            type: 'buff',
+            category: 'curse',
+            expiresOnBattleEnd: false,
+            removalCondition: '前進五層後自動解除',
+            targetStat: 'desGain',
+            amount: 20,
+          },
+        ],
         failEffects: '無'
       },
       {

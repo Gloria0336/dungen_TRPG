@@ -196,7 +196,7 @@ export const MONSTER_DB: Record<string, MonsterDef> = {
       {
         id: 'MS-B4-A', name: '蠻力重擊', control: false,
         desSpImpactLevel: '中', durabilityTarget: '雙',
-        hitRule: '基礎命中70%', baseHit: 70, cooldown: 0,
+        hitRule: '基礎命中70%', baseHit: 70, cooldown: 2,
         damageMultiplier: 1.5,
         durabilityDamage: 15,
         desImpactAmount: 10,
@@ -206,7 +206,7 @@ export const MONSTER_DB: Record<string, MonsterDef> = {
       {
         id: 'MS-B4-B', name: '野蠻擄獲', control: true,
         desSpImpactLevel: '高', durabilityTarget: '上',
-        hitRule: '基礎命中60%', baseHit: 60, cooldown: 2,
+        hitRule: '基礎命中60%', baseHit: 60, cooldown: 3,
         damageMultiplier: 1.2,
         controlTurns: 1,
         durabilityDamage: 30,

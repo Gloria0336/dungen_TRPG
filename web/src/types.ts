@@ -38,13 +38,19 @@ export type SkillActivation = 'active' | 'passive';
 export type SkillCategory = 'class' | 'weapon' | 'body';
 export type BodySkillCategory = 'passive' | 'self' | 'enemy' | 'ally';
 export type PlayerRole = 'protagonist' | 'companion';
-export type EffectStat = 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp' | 'skillDr' | 'amp';
+export type EffectStat = 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp' | 'skillDr' | 'amp' | 'desGain';
+export type StatusEffectMechanic = 'statMod' | 'dot' | 'buff';
+export type StatusEffectCategory = 'buff' | 'debuff' | 'blessing' | 'curse';
 
 export interface SkillStatusPayload {
   name: string;
-  duration: number;
+  duration?: number | null;
   effect: string;
-  type: 'statMod' | 'dot' | 'buff';
+  type: StatusEffectMechanic;
+  category?: StatusEffectCategory;
+  expiresOnBattleEnd?: boolean;
+  removalCondition?: string;
+  expiresAtFloor?: number | null;
   targetStat?: EffectStat;
   amount?: number;
 }
@@ -112,10 +118,13 @@ export interface MonsterSkill {
   durabilityDamage?: number; // 鋆???摨行皜蝷?
 
   specialEffects?: {
-    type: 'statMod' | 'dot' | 'buff';
+    type: StatusEffectMechanic;
+    category?: StatusEffectCategory;
+    expiresOnBattleEnd?: boolean;
+    removalCondition?: string;
     targetStat?: 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp' | 'skillDr' | 'amp';
     amount: number;
-    duration: number;
+    duration?: number | null;
   }[];
 }
 
@@ -217,6 +226,8 @@ export interface EventOption {
   requiredCheck: string;
   successEffects: string;
   failEffects: string;
+  successStatusEffects?: SkillStatusPayload[];
+  failStatusEffects?: SkillStatusPayload[];
 }
 
 export interface EventDef {
@@ -417,11 +428,15 @@ export interface PlayerState {
 
 export interface StatusEffect {
   name: string;
-  duration: number;
+  duration?: number | null;
   effect: string;
+  category?: StatusEffectCategory;
+  expiresOnBattleEnd?: boolean;
+  removalCondition?: string;
+  expiresAtFloor?: number | null;
   // --- For explicit stat mods ---
-  type?: 'statMod' | 'dot' | 'buff';
-  targetStat?: 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp' | 'skillDr' | 'amp';
+  type?: StatusEffectMechanic;
+  targetStat?: EffectStat;
   amount?: number;
 }
 

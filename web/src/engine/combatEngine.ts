@@ -1,7 +1,7 @@
 ﻿import type {
   PlayerState, EnemyState, CombatState, CombatTurnResult,
   CombatAction, TurnAction, DiceResult, MonsterSkill, GameState,
-  StatusEffect,
+  StatusEffect, StatusEffectCategory,
 } from '../types';
 import { hitCheck, evadeCheck, percentCheck, getSPWeightMod, randomFloat, randomInt, parseBaseHit } from './diceEngine';
 import { getCounterEffects } from './counterEngine';
@@ -256,8 +256,7 @@ export function applyEquipmentSideEffects(
             changeHandled = true;
             break;
           case 'des':
-            player.des = Math.max(0, Math.min(100, player.des + effect.amount));
-            resultObj.desChange += effect.amount;
+            resultObj.desChange += applyPlayerDesChange(player, effect.amount);
             changeHandled = true;
             break;
           case 'agi':
@@ -349,6 +348,62 @@ function getPlayerTotalAmp(player: PlayerState): number {
   return player.ampPercent + getPassiveAmpBonus(player);
 }
 
+function isBeneficialStatusEffect(effect: StatusEffect): boolean {
+  if (typeof effect.amount === 'number') {
+    return effect.amount > 0;
+  }
+
+  return !effect.effect.includes('-');
+}
+
+export function getStatusEffectCategory(effect: StatusEffect): StatusEffectCategory {
+  if (effect.category) return effect.category;
+
+  const isLongTerm = Boolean(effect.removalCondition) || effect.expiresOnBattleEnd === false;
+  const beneficial = isBeneficialStatusEffect(effect);
+
+  if (isLongTerm) {
+    return beneficial ? 'blessing' : 'curse';
+  }
+
+  return beneficial ? 'buff' : 'debuff';
+}
+
+export function normalizeStatusEffect(effect: StatusEffect): StatusEffect {
+  const category = getStatusEffectCategory(effect);
+  return {
+    ...effect,
+    category,
+    expiresOnBattleEnd: effect.expiresOnBattleEnd ?? (category === 'buff' || category === 'debuff'),
+  };
+}
+
+function shouldTickStatusDuration(effect: StatusEffect): boolean {
+  const normalized = normalizeStatusEffect(effect);
+  return normalized.expiresOnBattleEnd === true && typeof normalized.duration === 'number';
+}
+
+function getDesGainModifierPercent(effects: StatusEffect[]): number {
+  return effects
+    .map(normalizeStatusEffect)
+    .filter((effect) => effect.targetStat === 'desGain' && typeof effect.amount === 'number')
+    .reduce((sum, effect) => sum + (effect.amount ?? 0), 0);
+}
+
+export function applyPlayerDesChange(
+  player: Pick<PlayerState, 'des' | 'statusEffects'>,
+  delta: number,
+): number {
+  const modifierPercent = delta > 0 ? getDesGainModifierPercent(player.statusEffects) : 0;
+  const adjustedDelta =
+    delta > 0
+      ? Math.max(1, Math.round(delta * (1 + modifierPercent / 100)))
+      : delta;
+  const before = player.des;
+  player.des = Math.max(0, Math.min(100, player.des + adjustedDelta));
+  return player.des - before;
+}
+
 type TurnTargetRef =
   | { playerIndex: number }
   | { enemyId: string };
@@ -384,18 +439,19 @@ function adjustDurationForTurnOrder(
   return targetHasRemainingTurn(combat, target) ? baseDuration : baseDuration + 1;
 }
 
-function applyStatusEffect(
+export function applyStatusEffect(
   target: StatusEffectCarrier,
   effect: StatusEffect
 ): void {
-  target.statusEffects.push(effect);
+  const normalized = normalizeStatusEffect(effect);
+  target.statusEffects.push(normalized);
 
-  if (effect.type === 'buff' && effect.targetStat === 'skillDr' && effect.amount && typeof target.skillDrPercent === 'number') {
-    target.skillDrPercent = Math.max(-80, Math.min(80, target.skillDrPercent + effect.amount));
+  if (normalized.type === 'buff' && normalized.targetStat === 'skillDr' && normalized.amount && typeof target.skillDrPercent === 'number') {
+    target.skillDrPercent = Math.max(-80, Math.min(80, target.skillDrPercent + normalized.amount));
   }
 
-  if (effect.type === 'buff' && effect.targetStat === 'amp' && effect.amount && typeof target.ampPercent === 'number') {
-    target.ampPercent = Math.max(-80, Math.min(200, target.ampPercent + effect.amount));
+  if (normalized.type === 'buff' && normalized.targetStat === 'amp' && normalized.amount && typeof target.ampPercent === 'number') {
+    target.ampPercent = Math.max(-80, Math.min(200, target.ampPercent + normalized.amount));
   }
 }
 
@@ -403,13 +459,52 @@ function removeExpiredStatusEffect(
   target: StatusEffectCarrier,
   effect: StatusEffect
 ): void {
-  if (effect.type === 'buff' && effect.targetStat === 'skillDr' && effect.amount && typeof target.skillDrPercent === 'number') {
-    target.skillDrPercent = Math.max(-80, Math.min(80, target.skillDrPercent - effect.amount));
+  const normalized = normalizeStatusEffect(effect);
+
+  if (normalized.type === 'buff' && normalized.targetStat === 'skillDr' && normalized.amount && typeof target.skillDrPercent === 'number') {
+    target.skillDrPercent = Math.max(-80, Math.min(80, target.skillDrPercent - normalized.amount));
   }
 
-  if (effect.type === 'buff' && effect.targetStat === 'amp' && effect.amount && typeof target.ampPercent === 'number') {
-    target.ampPercent = Math.max(-80, Math.min(200, target.ampPercent - effect.amount));
+  if (normalized.type === 'buff' && normalized.targetStat === 'amp' && normalized.amount && typeof target.ampPercent === 'number') {
+    target.ampPercent = Math.max(-80, Math.min(200, target.ampPercent - normalized.amount));
   }
+}
+
+export function clearCombatOnlyStatusEffects(target: StatusEffectCarrier): void {
+  target.statusEffects = target.statusEffects.filter((effect) => {
+    const normalized = normalizeStatusEffect(effect);
+    if (!normalized.expiresOnBattleEnd) return true;
+    removeExpiredStatusEffect(target, normalized);
+    return false;
+  });
+}
+
+function clearCombatEndStatuses(
+  players: [PlayerState, PlayerState],
+  enemies: EnemyState[],
+): void {
+  players.forEach((player) => clearCombatOnlyStatusEffects(player));
+  enemies.forEach((enemy) => clearCombatOnlyStatusEffects(enemy));
+}
+
+export function clearFloorExpiredStatusEffects(
+  target: StatusEffectCarrier,
+  currentFloor: number,
+): StatusEffect[] {
+  const removed: StatusEffect[] = [];
+
+  target.statusEffects = target.statusEffects.filter((effect) => {
+    const normalized = normalizeStatusEffect(effect);
+    if (typeof normalized.expiresAtFloor !== 'number' || currentFloor < normalized.expiresAtFloor) {
+      return true;
+    }
+
+    removeExpiredStatusEffect(target, normalized);
+    removed.push(normalized);
+    return false;
+  });
+
+  return removed;
 }
 
 function makeAdjustedStatusEffect(
@@ -420,7 +515,10 @@ function makeAdjustedStatusEffect(
   if (!effect) return null;
   return {
     ...effect,
-    duration: adjustDurationForTurnOrder(effect.duration, combat, target),
+    duration:
+      typeof effect.duration === 'number'
+        ? adjustDurationForTurnOrder(effect.duration, combat, target)
+        : effect.duration,
   };
 }
 
@@ -455,9 +553,7 @@ function applyFormulaSelfEffects(
     const restoreDesScaling = formula.restoreDesScalingStat
         ? getEffectivePlayerStat(player, formula.restoreDesScalingStat) * (formula.restoreDesScalingFactor ?? 0)
       : 0;
-    const beforeDes = player.des;
-    player.des = Math.max(0, player.des - Math.round(formula.restoreDes + restoreDesScaling));
-    result.desChange += player.des - beforeDes;
+    result.desChange += applyPlayerDesChange(player, -Math.round(formula.restoreDes + restoreDesScaling));
   }
 
   if (skill.id === 'SK-FIGHT-RAGE') {
@@ -688,8 +784,7 @@ export function processEnemyAttack(
 
     // DES/SP impact
     const desAmount = skill.desImpactAmount ?? getImpactAmount(skill.desSpImpactLevel);
-    result.desChange = desAmount;
-    player.des = Math.min(100, player.des + desAmount);
+    result.desChange = applyPlayerDesChange(player, desAmount);
 
     // SP drain (proportional to impact if not explicitly set)
     const spDrain = skill.spDrainAmount ?? Math.floor(desAmount * 0.5);
@@ -724,7 +819,9 @@ export function processEnemyAttack(
       for (const effect of skill.specialEffects) {
         const adjustedDuration =
           typeof targetPlayerIndex === 'number'
-            ? adjustDurationForTurnOrder(effect.duration, combat, { playerIndex: targetPlayerIndex })
+            ? typeof effect.duration === 'number'
+              ? adjustDurationForTurnOrder(effect.duration, combat, { playerIndex: targetPlayerIndex })
+              : effect.duration
             : effect.duration;
         if (effect.type === 'statMod' && effect.targetStat && effect.amount) {
           applyStatusEffect(player, {
@@ -732,6 +829,9 @@ export function processEnemyAttack(
             duration: adjustedDuration,
             effect: `${effect.targetStat.toUpperCase()} ${effect.amount > 0 ? '+' : ''}${effect.amount}`,
             type: effect.type,
+            category: effect.category,
+            expiresOnBattleEnd: effect.expiresOnBattleEnd,
+            removalCondition: effect.removalCondition,
             targetStat: effect.targetStat,
             amount: effect.amount,
           });
@@ -742,6 +842,9 @@ export function processEnemyAttack(
             duration: adjustedDuration,
             effect: `HP ${effect.amount}`,
             type: effect.type,
+            category: effect.category,
+            expiresOnBattleEnd: effect.expiresOnBattleEnd,
+            removalCondition: effect.removalCondition,
             targetStat: effect.targetStat,
             amount: effect.amount,
           });
@@ -1021,8 +1124,7 @@ function processPlayerActionSingle(
         if (item.name.includes('蝎曄?') || item.name.includes('SP')) {
           player.sp = Math.min(player.maxSp, player.sp + 30);
           result.spChange = 30;
-          player.des = Math.max(0, player.des - 5);
-          result.desChange = -5;
+          result.desChange = applyPlayerDesChange(player, -5);
         }
         item.quantity--;
         if (item.quantity <= 0) {
@@ -1097,9 +1199,7 @@ function applySupportSkillEffect(
       const restoreDesScaling = formula.restoreDesScalingStat
         ? getEffectivePlayerStat(caster, formula.restoreDesScalingStat) * (formula.restoreDesScalingFactor ?? 0)
         : 0;
-      const beforeDes = target.des;
-      target.des = Math.max(0, target.des - Math.round(formula.restoreDes + restoreDesScaling));
-      result.desChange += target.des - beforeDes;
+      result.desChange += applyPlayerDesChange(target, -Math.round(formula.restoreDes + restoreDesScaling));
     }
 
     const effect = makeAdjustedStatusEffect(formula.selfEffect, combat, { playerIndex: targetPlayerIndex });
@@ -1340,6 +1440,7 @@ export function advanceCombat(state: GameState): CombatTurnResult[] {
     const allPlayersDead = state.players.every((p) => !p.isAlive || p.isBD);
     if (allEnemiesDead || protagonistDefeated || allPlayersDead) {
       combat.isComplete = true;
+      clearCombatEndStatuses(state.players, state.enemies);
       break;
     }
 
@@ -1576,13 +1677,16 @@ export function processEndOfRound(
     }
 
     // Decrement status effects
-    player.statusEffects = player.statusEffects.filter((se) => {
-      se.duration--;
-      if (se.duration <= 0) {
-        removeExpiredStatusEffect(player, se);
-        return false;
+    player.statusEffects = player.statusEffects.flatMap((effect) => {
+      const normalized = normalizeStatusEffect(effect);
+      if (!shouldTickStatusDuration(normalized)) return [normalized];
+
+      normalized.duration = (normalized.duration ?? 0) - 1;
+      if ((normalized.duration ?? 0) <= 0) {
+        removeExpiredStatusEffect(player, normalized);
+        return [];
       }
-      return true;
+      return [normalized];
     });
 
     // Decrement skill cooldowns
@@ -1630,13 +1734,16 @@ export function processEndOfRound(
       }
     }
 
-    enemy.statusEffects = enemy.statusEffects.filter((se) => {
-      se.duration--;
-      if (se.duration <= 0) {
-        removeExpiredStatusEffect(enemy, se);
-        return false;
+    enemy.statusEffects = enemy.statusEffects.flatMap((effect) => {
+      const normalized = normalizeStatusEffect(effect);
+      if (!shouldTickStatusDuration(normalized)) return [normalized];
+
+      normalized.duration = (normalized.duration ?? 0) - 1;
+      if ((normalized.duration ?? 0) <= 0) {
+        removeExpiredStatusEffect(enemy, normalized);
+        return [];
       }
-      return true;
+      return [normalized];
     });
 
     // Decrement monster skill cooldowns
@@ -1660,6 +1767,7 @@ export function processEndOfRound(
 
   if (allEnemiesDead || allPlayersDead) {
     combat.isComplete = true;
+    clearCombatEndStatuses(players, enemies);
   }
 }
 
