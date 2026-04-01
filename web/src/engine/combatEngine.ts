@@ -7,6 +7,7 @@ import { hitCheck, evadeCheck, percentCheck, getSPWeightMod, randomFloat, random
 import { getCounterEffects } from './counterEngine';
 import { CLASS_DB } from '../data/classes';
 import { getSkillTargeting } from './skillTargeting';
+import { getEffectivePlayerDes, getPlayerPenaltyState, syncOutfitBreakControl } from './playerPenaltyEngine';
 
 // ============================================================
 // Combat Engine - handles all combat calculations
@@ -159,7 +160,12 @@ export function applyDurabilityDamage(
   player: PlayerState,
   target: MonsterSkill['durabilityTarget'],
   amount?: number
-): { upperChange: number; lowerChange: number } {
+): {
+  upperChange: number;
+  lowerChange: number;
+  outfitBreakControlApplied: boolean;
+  outfitBreakControlDuration: number;
+} {
   let upperChange = 0;
   let lowerChange = 0;
   const normalizedTarget = String(target ?? '').trim();
@@ -212,9 +218,16 @@ export function applyDurabilityDamage(
   player.upperDurability = Math.round(player.upperDurability);
   player.lowerDurability = Math.round(player.lowerDurability);
 
+  const outfitBreakControl = syncOutfitBreakControl(player);
+
   // Recalculate DR after durability change
   player.drPercent = calculateDR(player);
-  return { upperChange, lowerChange };
+  return {
+    upperChange,
+    lowerChange,
+    outfitBreakControlApplied: outfitBreakControl.applied,
+    outfitBreakControlDuration: outfitBreakControl.duration,
+  };
 }
 
 /** Apply side effects of equipment based on trigger */
@@ -285,10 +298,17 @@ export function getStatusEffectMod(
 }
 
 export function getEffectivePlayerStat(
-  player: Pick<PlayerState, 'agi' | 'str' | 'wil' | 'statusEffects'>,
+  player: Pick<PlayerState, 'agi' | 'str' | 'wil' | 'statusEffects' | 'des' | 'upperDurability' | 'lowerDurability'>,
   stat: 'agi' | 'str' | 'wil'
 ): number {
-  return Math.max(0, player[stat] + getStatusEffectMod(player.statusEffects, stat));
+  const penaltyState = getPlayerPenaltyState(player);
+  const penalty =
+    stat === 'agi'
+      ? penaltyState.agiPenalty
+      : stat === 'str'
+        ? penaltyState.strPenalty
+        : 0;
+  return Math.max(0, player[stat] + getStatusEffectMod(player.statusEffects, stat) - penalty);
 }
 
 function getBodySkillLevel(player: PlayerState, skillId: string): number {
@@ -680,6 +700,10 @@ export function processEnemyAttack(
     const durResult = applyDurabilityDamage(player, skill.durabilityTarget, skill.durabilityDamage);
     result.upperChange = durResult.upperChange;
     result.lowerChange = durResult.lowerChange;
+    if (durResult.outfitBreakControlApplied) {
+      result.controlApplied = true;
+      result.controlDuration = Math.max(result.controlDuration, durResult.outfitBreakControlDuration);
+    }
 
     // Control effect
     if (skill.control && !player.controlImmunity) {
@@ -726,8 +750,9 @@ export function processEnemyAttack(
     }
 
     // Check BD condition (HP or DES reaches 0/max)
-    if (player.hp <= 0 || player.des >= 100) {
-      if (!player.isBD && !player.isProtagonist && player.des >= 100 && player.hp > 0) {
+    const effectiveDes = getEffectivePlayerDes(player);
+    if (player.hp <= 0 || effectiveDes >= 100) {
+      if (!player.isBD && !player.isProtagonist && effectiveDes >= 100 && player.hp > 0) {
         result.companionBDTriggered = true;
       }
       player.isBD = true;
@@ -1461,8 +1486,9 @@ export function processEndOfRound(
         combat.pendingResults.push(dummyResult);
 
         // BD check in case side effect instantly kills/BDs player
-        if (player.hp <= 0 || player.des >= 100) {
-          if (!player.isBD && !player.isProtagonist && player.des >= 100 && player.hp > 0) {
+        const effectiveDes = getEffectivePlayerDes(player);
+        if (player.hp <= 0 || effectiveDes >= 100) {
+          if (!player.isBD && !player.isProtagonist && effectiveDes >= 100 && player.hp > 0) {
             dummyResult.companionBDTriggered = true;
           }
           player.isBD = true;
@@ -1514,8 +1540,9 @@ export function processEndOfRound(
         combat.pendingResults.push(dotResult);
 
         // BD check after DOT
-        if (player.hp <= 0 || player.des >= 100) {
-          if (!player.isBD && !player.isProtagonist && player.des >= 100 && player.hp > 0) {
+        const effectiveDes = getEffectivePlayerDes(player);
+        if (player.hp <= 0 || effectiveDes >= 100) {
+          if (!player.isBD && !player.isProtagonist && effectiveDes >= 100 && player.hp > 0) {
             dotResult.companionBDTriggered = true;
           }
           player.isBD = true;

@@ -15,6 +15,7 @@ import {
   initCombat, processPlayerAction,
   isCombatVictory, advanceCombat, getEffectivePlayerStat
 } from './engine/combatEngine';
+import { getEffectivePlayerDes, getPlayerPenaltySummary } from './engine/playerPenaltyEngine';
 import { isAllyTargetingSkill, skillNeedsTargetSelection } from './engine/skillTargeting';
 import { generateEnemies, generateExploreEncounter, processRestAction } from './engine/phaseEngine';
 import {
@@ -531,10 +532,11 @@ export default function App() {
       const isInt = option.requiredCheck.includes('INT');
       const isVit = option.requiredCheck.includes('VIT') || option.requiredCheck.includes('WIL');
 
-      const statVal = isAgi ? state.players![0].agi :
-        isStr ? state.players![0].str :
-          isInt ? state.players![0].wil : // Map INT to WIL
-            isVit ? state.players![0].wil : 10;
+      const actor = state.players![0];
+      const statVal = isAgi ? getEffectivePlayerStat(actor, 'agi') :
+        isStr ? getEffectivePlayerStat(actor, 'str') :
+          isInt ? getEffectivePlayerStat(actor, 'wil') : // Map INT to WIL
+            isVit ? getEffectivePlayerStat(actor, 'wil') : 10;
 
       const roll = Math.floor(Math.random() * 100) + 1;
       // Formula: 1D100 <= 50 + stat*5
@@ -563,8 +565,12 @@ export default function App() {
       if (bothMatch) {
         const val = parseInt(bothMatch[1]);
         state.players.forEach((p) => {
-          setEquippedItemDurability(p, 'Upper', p.upperDurability + val);
-          setEquippedItemDurability(p, 'Lower', p.lowerDurability + val);
+          if (setEquippedItemDurability(p, 'Upper', p.upperDurability + val)) {
+            addLogEntry(state, 'system', `${p.name} 因衣裝破損而被控制 1 回合！`);
+          }
+          if (setEquippedItemDurability(p, 'Lower', p.lowerDurability + val)) {
+            addLogEntry(state, 'system', `${p.name} 因衣裝破損而被控制 1 回合！`);
+          }
           recalculatePlayerStats(p);
         });
       }
@@ -573,7 +579,9 @@ export default function App() {
     if (upperMatch && state.players && !actualEffects.includes('Upper/Lower耐久')) {
       const val = parseInt(upperMatch[1]);
       state.players.forEach((p) => {
-        setEquippedItemDurability(p, 'Upper', p.upperDurability + val);
+        if (setEquippedItemDurability(p, 'Upper', p.upperDurability + val)) {
+          addLogEntry(state, 'system', `${p.name} 因衣裝破損而被控制 1 回合！`);
+        }
         recalculatePlayerStats(p);
       });
     }
@@ -581,7 +589,9 @@ export default function App() {
     if (lowerMatch && state.players && !actualEffects.includes('Upper/Lower耐久')) {
       const val = parseInt(lowerMatch[1]);
       state.players.forEach((p) => {
-        setEquippedItemDurability(p, 'Lower', p.lowerDurability + val);
+        if (setEquippedItemDurability(p, 'Lower', p.lowerDurability + val)) {
+          addLogEntry(state, 'system', `${p.name} 因衣裝破損而被控制 1 回合！`);
+        }
         recalculatePlayerStats(p);
       });
     }
@@ -728,7 +738,7 @@ export default function App() {
 
                   <StatBar label="HP" value={p.hp} max={p.maxHp} type="hp" />
                   <StatBar label="SP" value={p.sp} max={p.maxSp} type="sp" />
-                  <StatBar label="DES" value={p.des} max={100} type="des" />
+                  <StatBar label="DES" value={getEffectivePlayerDes(p)} max={100} type="des" />
 
                   <div className="mt-1 text-sm text-dim">
                     STR:{getEffectivePlayerStat(p, 'str')} AGI:{getEffectivePlayerStat(p, 'agi')} WIL:{getEffectivePlayerStat(p, 'wil')} DR:{p.drPercent}%
@@ -738,6 +748,11 @@ export default function App() {
                   <div className="text-sm text-dim">
                     上衣:{p.upperDurability}/100 下衣:{p.lowerDurability}/100
                   </div>
+                  {getPlayerPenaltySummary(p).length > 0 && (
+                    <div className="text-sm text-dim">
+                      懲罰: {getPlayerPenaltySummary(p).join(' / ')}
+                    </div>
+                  )}
                   <div className="text-sm text-dim" style={{ marginTop: '0.3rem' }}>
                     <div style={{ color: 'var(--text-secondary)' }}>裝備：</div>
                     <div style={{ paddingLeft: '0.5rem' }}>武器：{p.equippedWeapon?.name || '無'}</div>
@@ -1251,8 +1266,18 @@ export default function App() {
             if (changes.hp_delta) { player.hp = Math.min(player.maxHp, player.hp + changes.hp_delta); effects.push(`HP +${changes.hp_delta}`); }
             if (changes.sp_delta) { player.sp = Math.min(player.maxSp, player.sp + changes.sp_delta); effects.push(`SP +${changes.sp_delta}`); }
             if (changes.des_delta) { player.des = Math.max(0, Math.min(100, player.des + changes.des_delta)); effects.push(`DES ${changes.des_delta > 0 ? '+' : ''}${changes.des_delta}`); }
-            if (changes.dr_u_delta) { setEquippedItemDurability(player, 'Upper', player.upperDurability + changes.dr_u_delta); effects.push(`上衣耐久 +${changes.dr_u_delta}`); }
-            if (changes.dr_l_delta) { setEquippedItemDurability(player, 'Lower', player.lowerDurability + changes.dr_l_delta); effects.push(`下衣耐久 +${changes.dr_l_delta}`); }
+            if (changes.dr_u_delta) {
+              if (setEquippedItemDurability(player, 'Upper', player.upperDurability + changes.dr_u_delta)) {
+                addLogEntry(state, 'system', `${player.name} 因衣裝破損而被控制 1 回合！`);
+              }
+              effects.push(`上衣耐久 +${changes.dr_u_delta}`);
+            }
+            if (changes.dr_l_delta) {
+              if (setEquippedItemDurability(player, 'Lower', player.lowerDurability + changes.dr_l_delta)) {
+                addLogEntry(state, 'system', `${player.name} 因衣裝破損而被控制 1 回合！`);
+              }
+              effects.push(`下衣耐久 +${changes.dr_l_delta}`);
+            }
             recalculatePlayerStats(player);
             item.quantity--;
             if (item.quantity <= 0) state.inventory.splice(state.inventory.indexOf(item), 1);

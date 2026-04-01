@@ -84,8 +84,8 @@ export const EVENT_DB: Record<string, EventDef> = {
     options: [
       {
         id: 'OP-TRAP-002-A',
-        label: '憋氣衝刺（VIT檢定）',
-        requiredCheck: 'VIT檢定 (1D100 <= 50 + VIT*5 + 10)',
+        label: '憋氣衝刺（WIL檢定）',
+        requiredCheck: 'WIL檢定 (1D100 <= 50 + WIL*5 + 10)',
         successEffects: 'HP -2；Phase->REST',
         failEffects: 'HP -5；DES +30；Phase->REST'
       },
@@ -191,7 +191,7 @@ export const EVENT_DB: Record<string, EventDef> = {
       '你沒有退路，只能拔出身上的武器迎戰。'
     ],
     jailbreakDescription: [
-      '那些躲在暗處的哥布林早就盯上了你豐滿的身體，它們淫笑著流著口水，準備撕裂你的防具。',
+      '那些躲在暗處的魔物早就盯上了你豐滿的身體，它們淫笑著流著口水，準備撕裂你的防具。',
       '如果你戰敗，等待你的將是被拖進巢穴中，淪為無止盡的肉便器與交尾地獄。'
     ],
     options: [
@@ -232,7 +232,7 @@ export const EVENT_DB: Record<string, EventDef> = {
         id: 'OP-SPRING-001-A',
         label: '脫衣全身浸泡（無檢定）',
         requiredCheck: '無',
-        successEffects: '全狀態恢復；HP +50；DES +30；Phase->REST',
+        successEffects: '全狀態恢復；HP +50；SP +80；DES +30；Phase->REST',
         failEffects: '無'
       },
       {
@@ -246,7 +246,7 @@ export const EVENT_DB: Record<string, EventDef> = {
         id: 'OP-SPRING-001-C',
         label: '僅在泉水邊淺嚐並稍作休息',
         requiredCheck: '無',
-        successEffects: 'HP +15；DES +5；Phase->REST',
+        successEffects: 'HP +15；SP +30；DES +5；Phase->REST',
         failEffects: '無'
       }
     ],

@@ -390,6 +390,7 @@ export interface PlayerState {
   isControlled: boolean;
   controlTurns: number;
   controlSource?: string;
+  outfitBreakControlTriggered: boolean;
   controlImmunity: boolean;
   controlImmunityTurns: number;
   statusEffects: StatusEffect[];

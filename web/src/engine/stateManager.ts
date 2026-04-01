@@ -7,6 +7,7 @@ import { getRandomWeaponByTier, getWeaponDef } from '../data/weapons';
 import { determineShopFloors } from './shopEngine';
 import { assignAbsoluteCounter } from './counterEngine';
 import { calculateDR } from './combatEngine';
+import { syncOutfitBreakControl } from './playerPenaltyEngine';
 
 // ============================================================
 // State Manager - game state CRUD, save/load, rollback
@@ -83,6 +84,7 @@ export function initializePlayer(classId: string, name: string, index: number): 
     isControlled: false,
     controlTurns: 0,
     controlImmunity: false,
+    outfitBreakControlTriggered: false,
     controlImmunityTurns: 0,
     statusEffects: [],
     skills: cls.skillList.map(s => ({ ...s, currentCooldown: 0 })),
@@ -149,6 +151,7 @@ export function initializeProtagonist(name: string): PlayerState {
     isControlled: false,
     controlTurns: 0,
     controlImmunity: false,
+    outfitBreakControlTriggered: false,
     controlImmunityTurns: 0,
     statusEffects: [],
     skills: [],
@@ -301,7 +304,7 @@ export function setEquippedItemDurability(
   player: PlayerState,
   slot: 'Upper' | 'Lower',
   durability: number,
-): void {
+): boolean {
   const equippedItem = slot === 'Upper' ? player.equippedUpper : player.equippedLower;
   const maxDurability = equippedItem?.durabilityMax ?? 100;
   const nextDurability = Math.max(0, Math.min(maxDurability, Math.round(durability)));
@@ -310,6 +313,7 @@ export function setEquippedItemDurability(
   else player.lowerDurability = nextDurability;
 
   if (equippedItem) equippedItem.durability = nextDurability;
+  return syncOutfitBreakControl(player).applied;
 }
 
 export function equipProtagonistEquipment(
@@ -425,6 +429,7 @@ function hydratePlayer(player: PlayerState, index: number): PlayerState {
   player.bodySkillSlots = player.bodySkillSlots ?? [null, null];
   player.protagonistWeaponId = player.protagonistWeaponId ?? (player.isProtagonist ? player.equippedWeapon?.templateId ?? 'WPN-IRON-SWORD' : null);
   player.statPoints = player.statPoints ?? 0;
+  player.outfitBreakControlTriggered = player.outfitBreakControlTriggered ?? (player.upperDurability <= 0 || player.lowerDurability <= 0);
   player.controlImmunity = player.controlImmunity ?? false;
   player.controlImmunityTurns = player.controlImmunityTurns ?? 0;
   player.statusEffects = player.statusEffects ?? [];
