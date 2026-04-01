@@ -358,6 +358,43 @@ export function equipProtagonistEquipment(
   return previousItem;
 }
 
+export function unequipProtagonistEquipment(
+  player: PlayerState,
+  slot: 'Weapon' | 'Upper' | 'Lower',
+): InventoryItem | null {
+  if (!player.isProtagonist) return null;
+
+  if (slot === 'Weapon') {
+    const previousWeapon = player.equippedWeapon
+      ? { ...player.equippedWeapon, equipStatus: 'Inventory' as const }
+      : null;
+    player.equippedWeapon = null;
+    player.protagonistWeaponId = null;
+    recalculatePlayerStats(player);
+    return previousWeapon;
+  }
+
+  if (slot === 'Upper') {
+    const previousUpper = player.equippedUpper
+      ? { ...player.equippedUpper, equipStatus: 'Inventory' as const }
+      : null;
+    player.equippedUpper = null;
+    player.upperDurability = 0;
+    recalculatePlayerStats(player);
+    syncOutfitBreakControl(player);
+    return previousUpper;
+  }
+
+  const previousLower = player.equippedLower
+    ? { ...player.equippedLower, equipStatus: 'Inventory' as const }
+    : null;
+  player.equippedLower = null;
+  player.lowerDurability = 0;
+  recalculatePlayerStats(player);
+  syncOutfitBreakControl(player);
+  return previousLower;
+}
+
 export function saveGame(state: GameState): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -427,7 +464,9 @@ function hydratePlayer(player: PlayerState, index: number): PlayerState {
   player.baseMaxSp = player.baseMaxSp ?? player.maxSp;
   player.weaponSkillSlots = player.weaponSkillSlots ?? [];
   player.bodySkillSlots = player.bodySkillSlots ?? [null, null];
-  player.protagonistWeaponId = player.protagonistWeaponId ?? (player.isProtagonist ? player.equippedWeapon?.templateId ?? 'WPN-IRON-SWORD' : null);
+  if (!Object.prototype.hasOwnProperty.call(player, 'protagonistWeaponId')) {
+    player.protagonistWeaponId = player.isProtagonist ? player.equippedWeapon?.templateId ?? 'WPN-IRON-SWORD' : null;
+  }
   player.statPoints = player.statPoints ?? 0;
   player.outfitBreakControlTriggered = player.outfitBreakControlTriggered ?? (player.upperDurability <= 0 || player.lowerDurability <= 0);
   player.controlImmunity = player.controlImmunity ?? false;
@@ -446,8 +485,8 @@ function hydratePlayer(player: PlayerState, index: number): PlayerState {
   }
 
   if (!player.absoluteCounter) player.absoluteCounter = assignAbsoluteCounter();
-  if (!player.equippedWeapon && player.isProtagonist) {
-    const weaponDef = getWeaponDef(player.protagonistWeaponId ?? 'WPN-IRON-SWORD');
+  if (!player.equippedWeapon && player.isProtagonist && player.protagonistWeaponId) {
+    const weaponDef = getWeaponDef(player.protagonistWeaponId);
     if (weaponDef) player.equippedWeapon = createWeaponInventoryItem(weaponDef);
   }
 

@@ -38,7 +38,7 @@ export type SkillActivation = 'active' | 'passive';
 export type SkillCategory = 'class' | 'weapon' | 'body';
 export type BodySkillCategory = 'passive' | 'self' | 'enemy' | 'ally';
 export type PlayerRole = 'protagonist' | 'companion';
-export type EffectStat = 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp' | 'skillDr' | 'amp' | 'desGain';
+export type EffectStat = 'wil' | 'agi' | 'str' | 'hit' | 'evade' | 'hp' | 'sp' | 'skillDr' | 'amp' | 'desGain';
 export type StatusEffectMechanic = 'statMod' | 'dot' | 'buff';
 export type StatusEffectCategory = 'buff' | 'debuff' | 'blessing' | 'curse';
 

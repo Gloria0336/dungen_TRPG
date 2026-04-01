@@ -1618,22 +1618,25 @@ export function processEndOfRound(
       }
     }
 
-    // Process DOT (damage-over-time) effects
+    // Process periodic status effects
     for (const se of player.statusEffects) {
       if (se.type === 'dot' && se.targetStat === 'hp' && se.amount) {
-        player.hp = Math.max(0, player.hp + se.amount); // amount is negative
+        const beforeHp = player.hp;
+        player.hp = Math.max(0, Math.min(player.maxHp, player.hp + se.amount));
+        const appliedHp = player.hp - beforeHp;
+        if (appliedHp === 0) continue;
         const dotResult: CombatTurnResult = {
           actorName: `${player.name}(${player.className})`,
           actorIsPlayer: true,
           targetName: '?芾澈',
-          action: `${se.name} ???瑕拿`,
+          action: `${se.name} 持續效果`,
           diceResults: [{
-            purpose: '???瑕拿',
+            purpose: '持續效果',
             threshold: 0, roll: 0, success: true,
-            effects: `${se.name}: HP ${se.amount}`
+            effects: `${se.name}: HP ${appliedHp > 0 ? '+' : ''}${appliedHp}`
           }],
-          damageDealt: Math.abs(se.amount),
-          hpChange: se.amount, spChange: 0, desChange: 0,
+          damageDealt: appliedHp < 0 ? Math.abs(appliedHp) : 0,
+          hpChange: appliedHp, spChange: 0, desChange: 0,
           upperChange: 0, lowerChange: 0,
           controlApplied: false, controlDuration: 0,
           narrative: ''
@@ -1649,6 +1652,33 @@ export function processEndOfRound(
           player.isBD = true;
           player.isAlive = player.hp > 0;
         }
+      }
+
+      if (se.type === 'dot' && se.targetStat === 'sp' && se.amount) {
+        const beforeSp = player.sp;
+        player.sp = Math.max(0, Math.min(player.maxSp, player.sp + se.amount));
+        const appliedSp = player.sp - beforeSp;
+        if (appliedSp === 0) continue;
+        combat.pendingResults.push({
+          actorName: `${player.name}(${player.className})`,
+          actorIsPlayer: true,
+          targetName: '?芾澈',
+          action: `${se.name} 持續效果`,
+          diceResults: [{
+            purpose: '持續效果',
+            threshold: 0, roll: 0, success: true,
+            effects: `${se.name}: SP ${appliedSp > 0 ? '+' : ''}${appliedSp}`
+          }],
+          damageDealt: 0,
+          hpChange: 0,
+          spChange: appliedSp,
+          desChange: 0,
+          upperChange: 0,
+          lowerChange: 0,
+          controlApplied: false,
+          controlDuration: 0,
+          narrative: ''
+        });
       }
     }
 

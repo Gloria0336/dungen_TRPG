@@ -9,7 +9,7 @@ import { getBodySkillDef } from './data/skills';
 import {
   createNewRun, initializePlayer, initializeProtagonist, saveGame, loadGame,
   hasSave, deleteSave, addLogEntry, createSnapshot, synthesizeProtagonistSkills, recalculatePlayerStats,
-  equipProtagonistEquipment, setEquippedItemDurability,
+  equipProtagonistEquipment, setEquippedItemDurability, unequipProtagonistEquipment,
 } from './engine/stateManager';
 import {
   initCombat, processPlayerAction,
@@ -1416,6 +1416,18 @@ export default function App() {
             saveGame(state);
             setState({ ...state });
           }}
+          onUnequipItem={(slot) => {
+            const protagonist = state.players?.find((player) => player.isProtagonist);
+            if (!protagonist) return;
+
+            const removedItem = unequipProtagonistEquipment(protagonist, slot);
+            if (!removedItem) return;
+
+            state.inventory.push(removedItem);
+            addLogEntry(state, 'system', `主角脫下了【${removedItem.name}】`);
+            saveGame(state);
+            setState({ ...state });
+          }}
           onClose={() => setShowBackpackModal(false)}
         />
       )}
@@ -1513,11 +1525,12 @@ function SettingsModal({ config, onSave, onClose }: {
   );
 }
 
-function BackpackModal({ inventory, players, onUseItem, onEquipItem, onClose }: {
+function BackpackModal({ inventory, players, onUseItem, onEquipItem, onUnequipItem, onClose }: {
   inventory: import('./types').InventoryItem[];
   players: [import('./types').PlayerState, import('./types').PlayerState];
   onUseItem: (itemId: string, playerIndex: number) => void;
   onEquipItem: (itemId: string) => void;
+  onUnequipItem: (slot: 'Weapon' | 'Upper' | 'Lower') => void;
   onClose: () => void;
 }) {
   const [selectingPlayerFor, setSelectingPlayerFor] = useState<string | null>(null);
@@ -1578,6 +1591,39 @@ function BackpackModal({ inventory, players, onUseItem, onEquipItem, onClose }: 
                   onClick={() => setSelectingPlayerFor(item.id)}
                 >
                   使用
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {protagonist && (
+          <div style={{ marginBottom: '1rem' }}>
+            <div className="panel-title" style={{ marginBottom: '0.5rem' }}>目前穿戴裝備</div>
+            {([
+              { slot: 'Weapon', label: '武器', item: protagonist.equippedWeapon },
+              { slot: 'Upper', label: '上裝', item: protagonist.equippedUpper },
+              { slot: 'Lower', label: '下裝', item: protagonist.equippedLower },
+            ] as const).map(({ slot, label, item }) => (
+              <div key={slot} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--border)' }}>
+                <div>
+                  <div className="text-sm" style={{ color: 'var(--text-primary)' }}>
+                    {label}：{item?.name ?? '未裝備'}
+                  </div>
+                  {item && (
+                    <div className="text-sm" style={{ color: 'var(--text-dim)' }}>
+                      {slot === 'Weapon'
+                        ? `ATK ${item.atk ?? 0}${typeof item.ampPercent === 'number' ? ` / AMP +${item.ampPercent}%` : ''}${typeof item.flatDr === 'number' ? ` / DR +${item.flatDr}` : ''}`
+                        : `耐久 ${item.durability ?? item.durabilityMax ?? 100}/${item.durabilityMax ?? 100}`}
+                    </div>
+                  )}
+                </div>
+                <button
+                  className="btn btn-sm"
+                  disabled={selectingPlayerFor !== null || !item}
+                  onClick={() => onUnequipItem(slot)}
+                >
+                  脫下
                 </button>
               </div>
             ))}
