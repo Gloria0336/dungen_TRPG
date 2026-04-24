@@ -40,6 +40,33 @@ import './index.css';
 
 const CONFIG_KEY = 'dungen_trpg_config';
 
+function checkAndApplyBadEnd(state: GameState): boolean {
+  const protagonist = state.players?.find(p => p.isProtagonist);
+  if (!protagonist) return false;
+  if (state.phase === 'badEnd' || state.phase === 'END') return false;
+
+  if (protagonist.hp <= 0) {
+    protagonist.isAlive = false;
+    protagonist.isBD = true;
+    state.endReason = 'protagonist_hp';
+    state.phase = 'badEnd';
+    addLogEntry(state, 'system', '💀 主角HP歸零，冒險終結。');
+    return true;
+  }
+
+  const effectiveDes = getEffectivePlayerDes(protagonist);
+  const effectiveDesMax = getEffectivePlayerDesMax(protagonist);
+  if (effectiveDes >= effectiveDesMax) {
+    protagonist.isBD = true;
+    state.endReason = 'protagonist_des';
+    state.phase = 'badEnd';
+    addLogEntry(state, 'system', '💀 主角絕望值達到上限（DES 100），冒險終結。');
+    return true;
+  }
+
+  return false;
+}
+
 type ActionSelectionState = {
   type: 'main' | 'attack_target' | 'skill_target' | 'skill_confirm' | 'item_target';
   selectedSkillId?: string;
@@ -776,6 +803,13 @@ export default function App() {
           );
         });
       });
+    }
+
+    if (checkAndApplyBadEnd(state)) {
+      state.currentEvent = null;
+      setState({ ...state });
+      requestAINarrative(state, undefined, `事件結束：${actualEffects}`);
+      return;
     }
 
     if (actualEffects.includes('Phase->COMBAT')) {
@@ -1525,6 +1559,12 @@ export default function App() {
             const effectStr = effects.length > 0 ? effects.join('、') : '無立即效果';
             addLogEntry(state, 'system', `${player.name} 使用了【${item.name}】→ ${effectStr}`);
             saveGame(state);
+            if (checkAndApplyBadEnd(state)) {
+              setShowBackpackModal(false);
+              setState({ ...state });
+              requestAINarrative(state, undefined, `${player.name} 使用了【${item.name}】，${effectStr}。`);
+              return;
+            }
             setState({ ...state });
             requestAINarrative(state, undefined, `${player.name} 從背包取出【${item.name}】服用，${effectStr}。`);
           }}
